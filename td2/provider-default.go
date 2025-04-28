@@ -148,7 +148,7 @@ func (d *DefaultProvider) QueryUnvotedOpenProposalIds(ctx context.Context) ([]ui
 						l(fmt.Sprintf("⚠️ Error checking if validator voted: %v", err))
 					}
 
-					if !hasVoted {
+					if err == nil && !hasVoted {
 						unvotedProposalsIds = append(unvotedProposalsIds, proposal.ProposalId)
 					}
 				}
