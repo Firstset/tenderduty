@@ -19,5 +19,5 @@
 
 # how to setup with your website
 # tenderduty.mysite.com {
-#     reverse_proxy tenderduty:28686
+#     reverse_proxy tenderduty:8888
 # }
