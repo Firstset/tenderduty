@@ -742,7 +742,7 @@ func evaluateRPCNodeDownAlert(cc *ChainConfig) (bool, bool) {
 func evaluateStakeChangeAlert(cc *ChainConfig) (bool, bool) {
 	alert, resolved := false, false
 
-	if cc.valInfo != nil && cc.lastValInfo != nil {
+	if cc.valInfo != nil && cc.lastValInfo != nil && cc.lastValInfo.DelegatedTokens > 0 {
 		stakeNow := cc.valInfo.DelegatedTokens
 		stakeBefore := cc.lastValInfo.DelegatedTokens
 		stakeChangePercent := (stakeNow - stakeBefore) / stakeBefore
