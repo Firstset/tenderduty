@@ -94,8 +94,6 @@ func getVotingPeriodProposals(httpClient *http.Client, indexers []string) ([]gov
 }
 
 func (d *NamadaProvider) QueryUnvotedOpenProposals(ctx context.Context) ([]gov.Proposal, error) {
-	// Store the last error to return if all indexer endpoints fail
-	var lastErr error
 	var unVotedProposals []gov.Proposal
 
 	indexers, ok1 := d.ChainConfig.Provider.Configs["indexers"].([]any)
@@ -131,13 +129,11 @@ func (d *NamadaProvider) QueryUnvotedOpenProposals(ctx context.Context) ([]gov.P
 			// Make the HTTP request with context
 			req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 			if err != nil {
-				lastErr = err
 				continue // Try next node
 			}
 
 			resp, err := httpClient.Do(req)
 			if err != nil {
-				lastErr = err
 				continue // Try next node
 			}
 
@@ -147,7 +143,6 @@ func (d *NamadaProvider) QueryUnvotedOpenProposals(ctx context.Context) ([]gov.P
 
 				var results []map[string]any
 				if err = json.NewDecoder(resp.Body).Decode(&results); err != nil {
-					lastErr = err
 					return // Exit this func, continue loop
 				}
 
@@ -169,7 +164,7 @@ func (d *NamadaProvider) QueryUnvotedOpenProposals(ctx context.Context) ([]gov.P
 		}
 	}
 
-	return unVotedProposals, lastErr
+	return unVotedProposals, nil
 }
 
 func (d *NamadaProvider) QueryValidatorInfo(ctx context.Context) (pub []byte, moniker string, jailed bool, bonded bool, delegatedTokens float64, commissionRate float64, err error) {
