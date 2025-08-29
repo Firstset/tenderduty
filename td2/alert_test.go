@@ -1612,6 +1612,126 @@ func TestEvaluateStakeChangeAlert(t *testing.T) {
 			expectedResolved:  false,
 			description:       "Should not alert when stake change is within threshold",
 		},
+		{
+			name:              "should not trigger alert when previous stake is zero (avoid division by zero)",
+			currentStake:      1000.0,
+			previousStake:     0.0,
+			increaseThreshold: 0.15,
+			dropThreshold:     0.10,
+			existingAlert:     false,
+			expectedAlert:     false,
+			expectedResolved:  false,
+			description:       "Should not alert and avoid division by zero when previous stake is zero",
+		},
+		{
+			name:              "should not process alert when previous stake becomes zero",
+			currentStake:      1000.0,
+			previousStake:     0.0,
+			increaseThreshold: 0.15,
+			dropThreshold:     0.10,
+			existingAlert:     true,
+			expectedAlert:     false,
+			expectedResolved:  false,
+			description:       "Should not process alert when previous stake becomes zero to avoid division by zero",
+		},
+		{
+			name:              "should not trigger alert when both current and previous stakes are zero",
+			currentStake:      0.0,
+			previousStake:     0.0,
+			increaseThreshold: 0.15,
+			dropThreshold:     0.10,
+			existingAlert:     false,
+			expectedAlert:     false,
+			expectedResolved:  false,
+			description:       "Should not alert when both stakes are zero",
+		},
+		{
+			name:              "should trigger alert when current stake drops to zero",
+			currentStake:      0.0,
+			previousStake:     1000.0,
+			increaseThreshold: 0.15,
+			dropThreshold:     0.10,
+			existingAlert:     false,
+			expectedAlert:     true,
+			expectedResolved:  false,
+			description:       "Should trigger alert when stake drops to zero (100% drop)",
+		},
+	}
+
+	// Add test cases for nil value scenarios to ensure robustness
+	nilTests := []struct {
+		name             string
+		valInfo          *ValInfo
+		lastValInfo      *ValInfo
+		existingAlert    bool
+		expectedAlert    bool
+		expectedResolved bool
+		description      string
+	}{
+		{
+			name:             "should not trigger alert when valInfo is nil",
+			valInfo:          nil,
+			lastValInfo:      &ValInfo{DelegatedTokens: 1000.0},
+			existingAlert:    false,
+			expectedAlert:    false,
+			expectedResolved: false,
+			description:      "Should not alert when valInfo is nil",
+		},
+		{
+			name:             "should not trigger alert when lastValInfo is nil",
+			valInfo:          &ValInfo{DelegatedTokens: 1000.0},
+			lastValInfo:      nil,
+			existingAlert:    false,
+			expectedAlert:    false,
+			expectedResolved: false,
+			description:      "Should not alert when lastValInfo is nil",
+		},
+		{
+			name:             "should not trigger alert when both valInfo and lastValInfo are nil",
+			valInfo:          nil,
+			lastValInfo:      nil,
+			existingAlert:    false,
+			expectedAlert:    false,
+			expectedResolved: false,
+			description:      "Should not alert when both valInfo and lastValInfo are nil",
+		},
+	}
+
+	// Run the nil value tests
+	for _, tt := range nilTests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset alarms for each test
+			testAlarms.AllAlarms = make(map[string]map[string]alertMsgCache)
+
+			cc := &ChainConfig{
+				name:       "test-chain",
+				ChainId:    "test-chain-1",
+				ValAddress: "testval123",
+				valInfo:    tt.valInfo,
+				lastValInfo: tt.lastValInfo,
+				Alerts: AlertConfig{
+					StakeChangeIncreaseThreshold: &[]float64{0.15}[0],
+					StakeChangeDropThreshold:     &[]float64{0.10}[0],
+				},
+			}
+
+			if tt.existingAlert {
+				testAlarms.AllAlarms["test-chain"] = make(map[string]alertMsgCache)
+				testAlarms.AllAlarms["test-chain"]["StakeChange_testval123"] = alertMsgCache{
+					Message:  "test alert",
+					SentTime: time.Now(),
+				}
+			}
+
+			alert, resolved := evaluateStakeChangeAlert(cc)
+
+			if alert != tt.expectedAlert {
+				t.Errorf("%s: expected alert %v, got %v", tt.description, tt.expectedAlert, alert)
+			}
+			if resolved != tt.expectedResolved {
+				t.Errorf("%s: expected resolved %v, got %v", tt.description, tt.expectedResolved, resolved)
+			}
+		})
 	}
 
 	for _, tt := range tests {
