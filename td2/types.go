@@ -257,6 +257,8 @@ type AlertConfig struct {
 	ConsecutivePriority string `yaml:"consecutive_priority"`
 	// Whether to alert on consecutive missed blocks
 	ConsecutiveAlerts *bool `yaml:"consecutive_enabled"`
+	// Whether to exclude prevote/precommit misses from consecutive miss counting
+	ConsecutiveMissExcludePreactions *bool `yaml:"consecutive_missed_exclude_preactions"`
 
 	// Window is how many blocks missed as a percentage of the slashing window to trigger an alert
 	Window *int `yaml:"percentage_missed"`
