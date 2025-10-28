@@ -127,8 +127,10 @@ func (cc *ChainConfig) WsRun() {
 					cc.lastBlockTime = time.Now()
 					info := getAlarms(cc.name)
 					cc.blocksResults = append([]int{int(signState)}, cc.blocksResults[:len(cc.blocksResults)-1]...)
+					excludePreactions := boolVal(cc.Alerts.ConsecutiveMissExcludePreactions)
 					if signState < 3 && cc.valInfo.Bonded {
-						warn := fmt.Sprintf("❌ warning      %s missed block %d on %s", cc.valInfo.Moniker, update.Height, cc.ChainId)
+						missTypes := []string{"block", "precommit", "prevote"}
+						warn := fmt.Sprintf("❌ warning      %s missed %s %d on %s", cc.valInfo.Moniker, missTypes[signState], update.Height, cc.ChainId)
 						info += warn + "\n"
 						cc.lastError = time.Now().UTC().String() + " " + info
 						l(warn)
@@ -141,11 +143,15 @@ func (cc *ChainConfig) WsRun() {
 					case StatusPrecommit:
 						cc.statPrecommitMiss += 1
 						cc.statTotalMiss += 1
-						cc.statConsecutiveMiss += 1
+						if !excludePreactions {
+							cc.statConsecutiveMiss += 1
+						}
 					case StatusPrevote:
 						cc.statPrevoteMiss += 1
 						cc.statTotalMiss += 1
-						cc.statConsecutiveMiss += 1
+						if !excludePreactions {
+							cc.statConsecutiveMiss += 1
+						}
 					case StatusSigned:
 						cc.statTotalSigns += 1
 						cc.statConsecutiveMiss = 0

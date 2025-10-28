@@ -13,6 +13,7 @@ func alertConfigsEqual(a, b AlertConfig) bool {
 		intPtrEqual(a.ConsecutiveMissed, b.ConsecutiveMissed) &&
 		a.ConsecutivePriority == b.ConsecutivePriority &&
 		boolPtrEqual(a.ConsecutiveAlerts, b.ConsecutiveAlerts) &&
+		boolPtrEqual(a.ConsecutiveMissExcludePreactions, b.ConsecutiveMissExcludePreactions) &&
 		intPtrEqual(a.Window, b.Window) &&
 		a.PercentagePriority == b.PercentagePriority &&
 		boolPtrEqual(a.PercentageAlerts, b.PercentageAlerts) &&
@@ -499,4 +500,3 @@ func TestFloatVal(t *testing.T) {
 		})
 	}
 }
-

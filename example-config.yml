@@ -76,6 +76,8 @@ default_alert_config:
   consecutive_enabled: yes
   # How many missed blocks should trigger a notification?
   consecutive_missed: 5
+  # The following option can be used to exclude cases where a validator submits prevote and precommit, but the proposer does not include it in the block
+  consecutive_missed_exclude_preactions: false
   # Consecutive Missed alert Pagerduty Severity
   consecutive_priority: critical
 
