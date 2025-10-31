@@ -145,12 +145,16 @@ func (cc *ChainConfig) WsRun() {
 						cc.statTotalMiss += 1
 						if !excludePreactions {
 							cc.statConsecutiveMiss += 1
+						} else {
+							cc.statConsecutiveMiss = 0
 						}
 					case StatusPrevote:
 						cc.statPrevoteMiss += 1
 						cc.statTotalMiss += 1
 						if !excludePreactions {
 							cc.statConsecutiveMiss += 1
+						} else {
+							cc.statConsecutiveMiss = 0
 						}
 					case StatusSigned:
 						cc.statTotalSigns += 1
