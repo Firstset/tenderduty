@@ -769,7 +769,7 @@ func evaluateStakeChangeAlert(cc *ChainConfig) (bool, bool) {
 		} else if cc.Provider.Name == "namada" {
 			unit = "NAM"
 		}
-		message := fmt.Sprintf("%s's stake has %s by %.1g%% (%.1g %s now) compared to the previous check (%.1g %s)", cc.valInfo.Moniker, trend, math.Abs(stakeChangePercent)*100, stakeNow, unit, stakeBefore, unit)
+		message := fmt.Sprintf("%s's stake has %s by %.1f%% (%s %s now) compared to the previous check (%s %s)", cc.valInfo.Moniker, trend, math.Abs(stakeChangePercent)*100, utils.HumanSI(stakeNow), unit, utils.HumanSI(stakeBefore), unit)
 		if math.Abs(stakeChangePercent) >= threshold {
 			if !alarms.exist(cc.name, alertID) {
 				td.alert(cc.name, message, severity, false, &alertID)
