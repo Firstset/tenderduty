@@ -273,7 +273,10 @@ func ConvertDecCoinToDisplayUnit(coins []github_com_cosmos_cosmos_sdk_types.DecC
 		}
 
 		if !foundCurrentDenom {
-			return nil, fmt.Errorf("source denomination '%s' not found in denomination units", coin.Denom)
+			// source denomination not found in denomination units
+			// the coin is most likely bridged to the chain so we keep it as is
+			convertedCoins = append(convertedCoins, coin)
+			continue
 		}
 
 		// Calculate the conversion factor based on exponent difference

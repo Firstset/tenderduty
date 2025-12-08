@@ -790,31 +790,99 @@ func evaluateStakeChangeAlert(cc *ChainConfig) (bool, bool) {
 func evaluateUnclaimedRewardsAlert(cc *ChainConfig) (bool, bool) {
 	alert, resolved := false, false
 
-	selfRewardsLen := len(*cc.valInfo.SelfDelegationRewards)
-	commissionLen := len(*cc.valInfo.Commission)
+	selfRewardsLen := 0
+	commissionLen := 0
+	if cc.valInfo.SelfDelegationRewards != nil {
+		selfRewardsLen = len(*cc.valInfo.SelfDelegationRewards)
+	}
+	if cc.valInfo.Commission != nil {
+		commissionLen = len(*cc.valInfo.Commission)
+	}
 
 	if selfRewardsLen > 0 || commissionLen > 0 {
-		var denom string
-		var totalRewards github_com_cosmos_cosmos_sdk_types.DecCoin
-
-		if selfRewardsLen > 0 {
-			firstReward := (*cc.valInfo.SelfDelegationRewards)[0]
-			denom = firstReward.Denom
-			totalRewards = github_com_cosmos_cosmos_sdk_types.DecCoin{
-				Denom:  denom,
-				Amount: firstReward.Amount,
+		var targetDenoms []string
+		addDenom := func(denom string) {
+			if denom == "" {
+				return
 			}
-
-			if commissionLen > 0 {
-				totalRewards = totalRewards.Add((*cc.valInfo.Commission)[0])
-			}
-		} else {
-			firstCommission := (*cc.valInfo.Commission)[0]
-			totalRewards = github_com_cosmos_cosmos_sdk_types.DecCoin{
-				Denom:  firstCommission.Denom,
-				Amount: firstCommission.Amount,
+			if !slices.Contains(targetDenoms, denom) {
+				targetDenoms = append(targetDenoms, denom)
 			}
 		}
+
+		targetDenom := ""
+		// we take the chain's native denoms from cc.denomMetadata
+		if cc.denomMetadata != nil {
+			addDenom(cc.denomMetadata.Base)
+			addDenom(cc.denomMetadata.Display)
+			targetDenom = cc.denomMetadata.Display
+			if targetDenom == "" {
+				targetDenom = cc.denomMetadata.Base
+			}
+		}
+
+		// when `cc.denomMetadata` is nil, we try to infer the denom from the rewards
+		if len(targetDenoms) == 0 {
+			if selfRewardsLen > 0 {
+				addDenom((*cc.valInfo.SelfDelegationRewards)[0].Denom)
+			} else if commissionLen > 0 {
+				// some chains return commission coins with IBC denoms
+				// we will filter out these non-native coins for now
+				for _, coin := range *cc.valInfo.Commission {
+					if !strings.HasPrefix(coin.Denom, "ibc/") {
+						addDenom(coin.Denom)
+					}
+				}
+			}
+		}
+
+		if targetDenom == "" && len(targetDenoms) > 0 {
+			targetDenom = targetDenoms[0]
+		}
+
+		if len(targetDenoms) == 0 || targetDenom == "" {
+			return alert, resolved
+		}
+
+		var nativeCoins []github_com_cosmos_cosmos_sdk_types.DecCoin
+		if selfRewardsLen > 0 {
+			for _, coin := range *cc.valInfo.SelfDelegationRewards {
+				if slices.Contains(targetDenoms, coin.Denom) {
+					nativeCoins = append(nativeCoins, coin)
+				}
+			}
+		}
+		if commissionLen > 0 {
+			for _, coin := range *cc.valInfo.Commission {
+				if slices.Contains(targetDenoms, coin.Denom) {
+					nativeCoins = append(nativeCoins, coin)
+				}
+			}
+		}
+
+		if len(nativeCoins) == 0 {
+			return alert, resolved
+		}
+
+		if cc.denomMetadata != nil {
+			convertedCoins, err := utils.ConvertDecCoinToDisplayUnit(nativeCoins, *cc.denomMetadata)
+			if err == nil {
+				nativeCoins = *convertedCoins
+			} else {
+				l(fmt.Errorf("cannot convert rewards/commission to display unit for %s, err: %w", cc.name, err))
+			}
+		}
+
+		totalAmount := github_com_cosmos_cosmos_sdk_types.ZeroDec()
+		for _, coin := range nativeCoins {
+			totalAmount = totalAmount.Add(coin.Amount)
+		}
+
+		if totalAmount.IsZero() {
+			return alert, resolved
+		}
+
+		totalRewards := github_com_cosmos_cosmos_sdk_types.NewDecCoinFromDec(targetDenom, totalAmount)
 
 		coinPrice, err := td.coinMarketCapClient.GetPrice(td.ctx, cc.Slug)
 		if err == nil {
