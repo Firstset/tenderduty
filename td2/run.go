@@ -53,6 +53,10 @@ func Run(configFile, stateFile, chainConfigDirectory string, password *string, d
 					if e != nil {
 						l(msg.chain, "error sending alert to slack", e.Error())
 					}
+					e = notifyWebhook(msg)
+					if e != nil {
+						l(msg.chain, "error sending alert to webhook", e.Error())
+					}
 				}(alert)
 			case <-td.ctx.Done():
 				return

@@ -25,6 +25,7 @@ type alertMsg struct {
 	disc bool
 	tg   bool
 	slk  bool
+	wh   bool
 
 	severity string
 	resolved bool
@@ -43,6 +44,8 @@ type alertMsg struct {
 	slkHook     string
 	slkMentions string
 
+	whURL string
+
 	alertConfig *AlertConfig
 }
 
@@ -53,6 +56,7 @@ const (
 	tg
 	di
 	slk
+	wh
 )
 
 type alertMsgCache struct {
@@ -67,6 +71,7 @@ type alarmCache struct {
 	SentTgAlarms   map[string]alertMsgCache            `json:"sent_tg_alarms"`
 	SentDiAlarms   map[string]alertMsgCache            `json:"sent_di_alarms"`
 	SentSlkAlarms  map[string]alertMsgCache            `json:"sent_slk_alarms"`
+	SentWHAlarms   map[string]alertMsgCache            `json:"sent_wh_alarms"`
 	AllAlarms      map[string]map[string]alertMsgCache `json:"sent_all_alarms"`
 	flappingAlarms map[string]map[string]alertMsgCache
 	notifyMux      sync.RWMutex
@@ -125,6 +130,7 @@ var alarms = &alarmCache{
 	SentTgAlarms:   make(map[string]alertMsgCache),
 	SentDiAlarms:   make(map[string]alertMsgCache),
 	SentSlkAlarms:  make(map[string]alertMsgCache),
+	SentWHAlarms:   make(map[string]alertMsgCache),
 	AllAlarms:      make(map[string]map[string]alertMsgCache),
 	flappingAlarms: make(map[string]map[string]alertMsgCache),
 	notifyMux:      sync.RWMutex{},
@@ -160,6 +166,12 @@ func shouldNotify(msg *alertMsg, dest notifyDest) bool {
 		}
 		whichMap = alarms.SentSlkAlarms
 		service = "Slack"
+	case wh:
+		if !slices.Contains(SeverityThresholdToSeverities(msg.alertConfig.Webhook.SeverityThreshold), msg.severity) {
+			return false
+		}
+		whichMap = alarms.SentWHAlarms
+		service = "Webhook"
 	}
 
 	switch {
@@ -397,6 +409,98 @@ func notifyPagerduty(msg *alertMsg) (err error) {
 	return
 }
 
+// WebhookPayload represents the payload sent to a generic webhook endpoint
+// The structure is inspired by Grafana's webhook contact point format
+type WebhookPayload struct {
+	Status   string         `json:"status"`
+	Alerts   []WebhookAlert `json:"alerts"`
+	Version  string         `json:"version"`
+	GroupKey string         `json:"groupKey"`
+}
+
+// WebhookAlert represents a single alert in the webhook payload
+type WebhookAlert struct {
+	Status       string            `json:"status"`
+	Labels       map[string]string `json:"labels"`
+	Annotations  map[string]string `json:"annotations"`
+	StartsAt     string            `json:"startsAt"`
+	EndsAt       string            `json:"endsAt"`
+	Fingerprint  string            `json:"fingerprint"`
+	GeneratorURL string            `json:"generatorURL,omitempty"`
+}
+
+func notifyWebhook(msg *alertMsg) (err error) {
+	if !msg.wh {
+		return nil
+	}
+	if !shouldNotify(msg, wh) {
+		return nil
+	}
+
+	status := "firing"
+	if msg.resolved {
+		status = "resolved"
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	endsAt := "0001-01-01T00:00:00Z"
+	if msg.resolved {
+		endsAt = now
+	}
+
+	alert := WebhookAlert{
+		Status: status,
+		Labels: map[string]string{
+			"alertname": msg.uniqueId,
+			"chain":     msg.chain,
+			"severity":  msg.severity,
+			"source":    "tenderduty",
+		},
+		Annotations: map[string]string{
+			"summary":     msg.message,
+			"description": msg.message,
+		},
+		StartsAt:    now,
+		EndsAt:      endsAt,
+		Fingerprint: msg.uniqueId,
+	}
+
+	payload := WebhookPayload{
+		Status:   status,
+		Alerts:   []WebhookAlert{alert},
+		Version:  "1",
+		GroupKey: msg.chain,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		l("⚠️ Could not marshal webhook payload!", err)
+		return err
+	}
+
+	req, err := http.NewRequest("POST", msg.whURL, bytes.NewBuffer(data))
+	if err != nil {
+		l("⚠️ Could not create webhook request!", err)
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		l("⚠️ Could not send webhook!", err)
+		return err
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		l("⚠️ Webhook returned non-success status:", resp.StatusCode)
+		return fmt.Errorf("webhook returned status %d for %s", resp.StatusCode, msg.chain)
+	}
+
+	return nil
+}
+
 func getAlarms(chain string) string {
 	alarms.notifyMux.RLock()
 	defer alarms.notifyMux.RUnlock()
@@ -422,6 +526,7 @@ func (c *Config) alert(chainName, message, severity string, resolved bool, id *s
 		disc:         boolVal(c.DefaultAlertConfig.Discord.Enabled) && boolVal(c.Chains[chainName].Alerts.Discord.Enabled),
 		tg:           boolVal(c.DefaultAlertConfig.Telegram.Enabled) && boolVal(c.Chains[chainName].Alerts.Telegram.Enabled),
 		slk:          boolVal(c.DefaultAlertConfig.Slack.Enabled) && boolVal(c.Chains[chainName].Alerts.Slack.Enabled),
+		wh:           boolVal(c.DefaultAlertConfig.Webhook.Enabled) && boolVal(c.Chains[chainName].Alerts.Webhook.Enabled),
 		severity:     severity,
 		resolved:     resolved,
 		chain:        fmt.Sprintf("%s (%s)", chainName, c.Chains[chainName].ChainId),
@@ -434,6 +539,7 @@ func (c *Config) alert(chainName, message, severity string, resolved bool, id *s
 		discHook:     c.Chains[chainName].Alerts.Discord.Webhook,
 		discMentions: strings.Join(c.Chains[chainName].Alerts.Discord.Mentions, " "),
 		slkHook:      c.Chains[chainName].Alerts.Slack.Webhook,
+		whURL:        c.Chains[chainName].Alerts.Webhook.URL,
 		alertConfig:  &c.Chains[chainName].Alerts,
 	}
 	c.alertChan <- a
