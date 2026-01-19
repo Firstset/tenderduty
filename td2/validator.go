@@ -201,12 +201,20 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 			if err == nil {
 				cc.denomMetadata = bankMeta
 			} else {
-				l(fmt.Errorf("cannot query bank metadata for chain %s, err: %w, now fallback to query the GitHub JSON file", cc.name, err))
-				bankMeta, err = cc.fetchBankMetadataFromGitHub()
-				if err == nil {
+				l(fmt.Errorf("cannot query bank metadata for chain %s via ABCI, err: %w, trying cosmos.directory fallback", cc.name, err))
+				// Try cosmos.directory fallback first
+				bankMeta = cc.getBankMetadataFromCosmosDirectory((*rewards)[0].Denom)
+				if bankMeta != nil {
 					cc.denomMetadata = bankMeta
+					l(fmt.Sprintf("✅ loaded bank metadata for chain %s from cosmos.directory", cc.name))
 				} else {
-					l(fmt.Errorf("cannot find bank metadata for chain %s in the GitHub JSON file, err: %w", cc.name, err))
+					l(fmt.Sprintf("ℹ️ cosmos.directory bank metadata not available for chain %s, trying GitHub fallback", cc.name))
+					bankMeta, err = cc.fetchBankMetadataFromGitHub()
+					if err == nil {
+						cc.denomMetadata = bankMeta
+					} else {
+						l(fmt.Errorf("cannot find bank metadata for chain %s in the GitHub JSON file, err: %w", cc.name, err))
+					}
 				}
 			}
 		}
@@ -251,35 +259,46 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 			cc.inflationRate = inflationRate
 			cc.baseAPR = inflationRate * (1 - communityTax) * totalSupply / cc.totalBondedTokens
 			cc.valInfo.ValidatorAPR = cc.baseAPR * (1 - cc.valInfo.CommissionRate)
+		} else {
+			// Try cosmos.directory fallback for APR data
+			cdTotalSupply, cdCommunityTax, cdAPR, ok := cc.getChainInfoFromCosmosDirectory()
+			if ok && cdAPR > 0 {
+				l(fmt.Sprintf("✅ using cosmos.directory APR data for chain %s (APR: %.4f)", cc.name, cdAPR))
+				cc.totalSupply = cdTotalSupply
+				cc.communityTax = cdCommunityTax
+				// Use the pre-calculated APR from cosmos.directory as the base APR
+				cc.baseAPR = cdAPR
+				cc.valInfo.ValidatorAPR = cc.baseAPR * (1 - cc.valInfo.CommissionRate)
+			} else {
+				l(fmt.Errorf("failed to query APR-related data for chain %s via ABCI (err: %w) and cosmos.directory fallback not available", cc.name, err))
+			}
+		}
 
-			if cc.cryptoPrice != nil {
-				// Calculate the validator's projected 30-day rewards in base units
-				projected30DRewardsBaseUnits := cc.valInfo.DelegatedTokens * cc.valInfo.ValidatorAPR * cc.valInfo.CommissionRate * 30 / 365
+		// Calculate projected rewards if we have APR and price data
+		if cc.baseAPR > 0 && cc.cryptoPrice != nil {
+			// Calculate the validator's projected 30-day rewards in base units
+			projected30DRewardsBaseUnits := cc.valInfo.DelegatedTokens * cc.valInfo.ValidatorAPR * cc.valInfo.CommissionRate * 30 / 365
 
-				// Convert from base units to display units using exponent
-				var displayExponent uint32 = 0
-				if cc.denomMetadata.Display != "" {
-					// Find the exponent for the display denomination
-					for _, unit := range cc.denomMetadata.DenomUnits {
-						if unit.Denom == cc.denomMetadata.Display {
-							displayExponent = unit.Exponent
-							break
-						}
+			// Convert from base units to display units using exponent
+			var displayExponent uint32 = 0
+			if cc.denomMetadata.Display != "" {
+				// Find the exponent for the display denomination
+				for _, unit := range cc.denomMetadata.DenomUnits {
+					if unit.Denom == cc.denomMetadata.Display {
+						displayExponent = unit.Exponent
+						break
 					}
 				}
-
-				// Convert to display units by dividing by 10^exponent
-				projected30DRewardsDisplayUnits := projected30DRewardsBaseUnits
-				for i := uint32(0); i < displayExponent; i++ {
-					projected30DRewardsDisplayUnits = projected30DRewardsDisplayUnits / 10
-				}
-
-				// Convert to fiat currency
-				cc.valInfo.Projected30DRewards = projected30DRewardsDisplayUnits * cc.cryptoPrice.Price
 			}
 
-		} else {
-			l(fmt.Errorf("failed to query APR-related data such as total supply, community tax and inflation rate for chain %s, err: %w", cc.name, err))
+			// Convert to display units by dividing by 10^exponent
+			projected30DRewardsDisplayUnits := projected30DRewardsBaseUnits
+			for i := uint32(0); i < displayExponent; i++ {
+				projected30DRewardsDisplayUnits = projected30DRewardsDisplayUnits / 10
+			}
+
+			// Convert to fiat currency
+			cc.valInfo.Projected30DRewards = projected30DRewardsDisplayUnits * cc.cryptoPrice.Price
 		}
 	}
 
