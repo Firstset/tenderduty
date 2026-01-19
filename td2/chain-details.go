@@ -378,9 +378,15 @@ func (cc *ChainConfig) getBankMetadataFromCosmosDirectory(denom string) *bank.Me
 	// Convert CDDenomUnit to bank.DenomUnit
 	denomUnits := make([]*bank.DenomUnit, len(cdAsset.DenomUnits))
 	for i, unit := range cdAsset.DenomUnits {
+		// Ensure exponent is within valid uint32 range to avoid integer overflow
+		// Denom exponents are typically small (0-18), but we check the full range for safety
+		exponent := uint32(0)
+		if unit.Exponent >= 0 && unit.Exponent <= 255 {
+			exponent = uint32(unit.Exponent)
+		}
 		denomUnits[i] = &bank.DenomUnit{
 			Denom:    unit.Denom,
-			Exponent: uint32(unit.Exponent),
+			Exponent: exponent,
 			Aliases:  unit.Aliases,
 		}
 	}
