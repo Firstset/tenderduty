@@ -35,6 +35,9 @@ func createTestConfig() *Config {
 					Slack: SlackConfig{
 						Enabled: &falseBool,
 					},
+					Webhook: WebhookConfig{
+						Enabled: &falseBool,
+					},
 				},
 			},
 		},
@@ -49,6 +52,9 @@ func createTestConfig() *Config {
 				Enabled: &falseBool,
 			},
 			Slack: SlackConfig{
+				Enabled: &falseBool,
+			},
+			Webhook: WebhookConfig{
 				Enabled: &falseBool,
 			},
 		},
@@ -174,6 +180,7 @@ func TestShouldNotify(t *testing.T) {
 		SentTgAlarms:   make(map[string]alertMsgCache),
 		SentDiAlarms:   make(map[string]alertMsgCache),
 		SentSlkAlarms:  make(map[string]alertMsgCache),
+		SentWHAlarms:   make(map[string]alertMsgCache),
 		AllAlarms:      make(map[string]map[string]alertMsgCache),
 		flappingAlarms: make(map[string]map[string]alertMsgCache),
 		notifyMux:      sync.RWMutex{},
@@ -270,6 +277,7 @@ func TestShouldNotify(t *testing.T) {
 			testAlarms.SentTgAlarms = make(map[string]alertMsgCache)
 			testAlarms.SentDiAlarms = make(map[string]alertMsgCache)
 			testAlarms.SentSlkAlarms = make(map[string]alertMsgCache)
+			testAlarms.SentWHAlarms = make(map[string]alertMsgCache)
 			testAlarms.flappingAlarms = make(map[string]map[string]alertMsgCache)
 
 			tt.setupAlarms()
@@ -452,6 +460,96 @@ func TestNotifySlack(t *testing.T) {
 	}
 }
 
+func TestNotifyWebhook(t *testing.T) {
+	tests := []struct {
+		name           string
+		msg            *alertMsg
+		serverResponse int
+		expectError    bool
+	}{
+		{
+			name: "successful notification",
+			msg: &alertMsg{
+				wh:       true,
+				chain:    "test-chain",
+				message:  "test message",
+				severity: "critical",
+				uniqueId: "test_alert_1",
+				resolved: false,
+				whURL:    "", // will be set to test server URL
+				alertConfig: &AlertConfig{
+					Webhook: WebhookConfig{SeverityThreshold: "info"},
+				},
+			},
+			serverResponse: 200,
+			expectError:    false,
+		},
+		{
+			name: "server error",
+			msg: &alertMsg{
+				wh:       true,
+				chain:    "test-chain",
+				message:  "test message",
+				severity: "critical",
+				uniqueId: "test_alert_2",
+				resolved: false,
+				whURL:    "", // will be set to test server URL
+				alertConfig: &AlertConfig{
+					Webhook: WebhookConfig{SeverityThreshold: "info"},
+				},
+			},
+			serverResponse: 500,
+			expectError:    true,
+		},
+		{
+			name: "webhook disabled",
+			msg: &alertMsg{
+				wh: false,
+			},
+			expectError: false,
+		},
+	}
+
+	// Setup test alarm cache
+	testAlarms := &alarmCache{
+		SentPdAlarms:   make(map[string]alertMsgCache),
+		SentTgAlarms:   make(map[string]alertMsgCache),
+		SentDiAlarms:   make(map[string]alertMsgCache),
+		SentSlkAlarms:  make(map[string]alertMsgCache),
+		SentWHAlarms:   make(map[string]alertMsgCache),
+		AllAlarms:      make(map[string]map[string]alertMsgCache),
+		flappingAlarms: make(map[string]map[string]alertMsgCache),
+		notifyMux:      sync.RWMutex{},
+	}
+	originalAlarms := alarms
+	alarms = testAlarms
+	defer func() { alarms = originalAlarms }()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset alarms for each test
+			testAlarms.SentWHAlarms = make(map[string]alertMsgCache)
+
+			if tt.msg.wh {
+				// Create test server
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(tt.serverResponse)
+				}))
+				defer server.Close()
+				tt.msg.whURL = server.URL
+			}
+
+			err := notifyWebhook(tt.msg)
+			if tt.expectError && err == nil {
+				t.Errorf("Expected error but got none")
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("Expected no error but got: %v", err)
+			}
+		})
+	}
+}
+
 func TestConfigAlert(t *testing.T) {
 	// Create test config
 	config := &Config{
@@ -477,6 +575,10 @@ func TestConfigAlert(t *testing.T) {
 					Slack: SlackConfig{
 						Enabled: &[]bool{false}[0],
 					},
+					Webhook: WebhookConfig{
+						Enabled: &[]bool{true}[0],
+						URL:     "https://test-webhook.example.com",
+					},
 				},
 			},
 		},
@@ -491,6 +593,9 @@ func TestConfigAlert(t *testing.T) {
 				Enabled: &[]bool{true}[0],
 			},
 			Slack: SlackConfig{
+				Enabled: &[]bool{true}[0],
+			},
+			Webhook: WebhookConfig{
 				Enabled: &[]bool{true}[0],
 			},
 		},
@@ -522,6 +627,12 @@ func TestConfigAlert(t *testing.T) {
 		}
 		if alertMsg.slk != false {
 			t.Errorf("Expected slack to be disabled")
+		}
+		if alertMsg.wh != true {
+			t.Errorf("Expected webhook to be enabled")
+		}
+		if alertMsg.whURL != "https://test-webhook.example.com" {
+			t.Errorf("Expected webhook URL 'https://test-webhook.example.com', got '%s'", alertMsg.whURL)
 		}
 	case <-time.After(time.Second):
 		t.Error("Alert was not sent to channel")
