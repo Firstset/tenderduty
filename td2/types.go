@@ -307,6 +307,8 @@ type AlertConfig struct {
 	Telegram TeleConfig `yaml:"telegram"`
 	// Slack webhook information
 	Slack SlackConfig `yaml:"slack"`
+	// Generic webhook information
+	Webhook WebhookConfig `yaml:"webhook"`
 }
 
 // NodeConfig holds the basic information for a node to connect to.
@@ -352,6 +354,14 @@ type SlackConfig struct {
 	Webhook           string   `yaml:"webhook"`
 	Mentions          []string `yaml:"mentions"`
 	SeverityThreshold string   `yaml:"severity_threshold"`
+}
+
+// WebhookConfig holds the information needed to send alerts to a generic webhook endpoint
+// The payload follows a Grafana-like format for broad compatibility
+type WebhookConfig struct {
+	Enabled           *bool  `yaml:"enabled"`
+	URL               string `yaml:"url"`
+	SeverityThreshold string `yaml:"severity_threshold"`
 }
 
 // HealthcheckConfig holds the information needed to send pings to a healthcheck endpoint
@@ -597,6 +607,7 @@ func loadConfig(yamlFile, stateFile, chainConfigDirectory string, password *stri
 		SentTgAlarms:  make(map[string]alertMsgCache),
 		SentDiAlarms:  make(map[string]alertMsgCache),
 		SentSlkAlarms: make(map[string]alertMsgCache),
+		SentWHAlarms:  make(map[string]alertMsgCache),
 		AllAlarms:     make(map[string]map[string]alertMsgCache),
 		notifyMux:     sync.RWMutex{},
 	}
@@ -639,6 +650,10 @@ func loadConfig(yamlFile, stateFile, chainConfigDirectory string, password *stri
 		if saved.Alarms.SentSlkAlarms != nil {
 			alarms.SentSlkAlarms = saved.Alarms.SentSlkAlarms
 			clearStale(alarms.SentSlkAlarms, "Slack", boolVal(c.DefaultAlertConfig.Pagerduty.Enabled), staleHours)
+		}
+		if saved.Alarms.SentWHAlarms != nil {
+			alarms.SentWHAlarms = saved.Alarms.SentWHAlarms
+			clearStale(alarms.SentWHAlarms, "Webhook", boolVal(c.DefaultAlertConfig.Webhook.Enabled), staleHours)
 		}
 		if saved.Alarms.AllAlarms != nil {
 			alarms.AllAlarms = saved.Alarms.AllAlarms

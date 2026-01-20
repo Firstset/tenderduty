@@ -67,6 +67,15 @@ default_alert_config:
     # Severity threshold defines the minimum severity level at which the alerts are sent to this channel
     severity_threshold: info
 
+  webhook:
+    # Send alerts to a generic webhook endpoint?
+    # The payload follows a Grafana-like format for broad compatibility
+    enabled: no
+    # The URL to send the webhook POST request to
+    url: https://your-webhook-endpoint.example.com/alerts
+    # Severity threshold defines the minimum severity level at which the alerts are sent to this channel
+    severity_threshold: info
+
   # Alert defaults shared by all chains
   # If the chain stops seeing new blocks, should an alert be sent?
   stalled_enabled: yes
@@ -166,6 +175,10 @@ chains:
       # an example for disabling the pagerduty alert channel, which is enabled by default
       pagerduty:
         enabled: no
+      # an example for overriding the webhook URL for this specific chain
+      # you can also disable the webhook for this chain by setting enabled: no
+      webhook:
+        url: https://chain-specific-webhook.example.com/osmosis-alerts
 
     # This section covers our RPC providers. No LCD (aka REST) endpoints are used, only TM's RPC endpoints
     # Multiple hosts are encouraged, and will be tried sequentially until a working endpoint is discovered.
