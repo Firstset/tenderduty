@@ -437,6 +437,11 @@ func notifyWebhook(msg *alertMsg) (err error) {
 		return nil
 	}
 
+	// Skip sending resolved messages if disabled in config
+	if msg.resolved && boolVal(msg.alertConfig.Webhook.DisableResolveMessage) {
+		return nil
+	}
+
 	status := "firing"
 	if msg.resolved {
 		status = "resolved"
