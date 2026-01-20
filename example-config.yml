@@ -75,6 +75,9 @@ default_alert_config:
     url: https://your-webhook-endpoint.example.com/alerts
     # Severity threshold defines the minimum severity level at which the alerts are sent to this channel
     severity_threshold: info
+    # When set to yes, resolved alert messages will not be sent to the webhook
+    # This is useful when you only want to be notified of firing alerts
+    disable_resolve_message: no
 
   # Alert defaults shared by all chains
   # If the chain stops seeing new blocks, should an alert be sent?

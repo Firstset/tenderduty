@@ -462,10 +462,12 @@ func TestNotifySlack(t *testing.T) {
 
 func TestNotifyWebhook(t *testing.T) {
 	tests := []struct {
-		name           string
-		msg            *alertMsg
-		serverResponse int
-		expectError    bool
+		name             string
+		msg              *alertMsg
+		serverResponse   int
+		expectError      bool
+		expectServerCall bool
+		setupAlarms      func(alarms *alarmCache) // optional setup for existing alarms
 	}{
 		{
 			name: "successful notification",
@@ -481,8 +483,9 @@ func TestNotifyWebhook(t *testing.T) {
 					Webhook: WebhookConfig{SeverityThreshold: "info"},
 				},
 			},
-			serverResponse: 200,
-			expectError:    false,
+			serverResponse:   200,
+			expectError:      false,
+			expectServerCall: true,
 		},
 		{
 			name: "server error",
@@ -498,15 +501,119 @@ func TestNotifyWebhook(t *testing.T) {
 					Webhook: WebhookConfig{SeverityThreshold: "info"},
 				},
 			},
-			serverResponse: 500,
-			expectError:    true,
+			serverResponse:   500,
+			expectError:      true,
+			expectServerCall: true,
 		},
 		{
 			name: "webhook disabled",
 			msg: &alertMsg{
 				wh: false,
 			},
-			expectError: false,
+			expectError:      false,
+			expectServerCall: false,
+		},
+		{
+			name: "resolved message skipped when DisableResolveMessage is true",
+			msg: &alertMsg{
+				wh:       true,
+				chain:    "test-chain",
+				message:  "test resolved message",
+				severity: "critical",
+				uniqueId: "test_alert_resolved_skip",
+				resolved: true,
+				whURL:    "", // will be set to test server URL
+				alertConfig: &AlertConfig{
+					Webhook: WebhookConfig{
+						SeverityThreshold:     "info",
+						DisableResolveMessage: &[]bool{true}[0],
+					},
+				},
+			},
+			serverResponse:   200,
+			expectError:      false,
+			expectServerCall: false,
+			// Set up existing alert so the resolved message would normally be sent
+			setupAlarms: func(a *alarmCache) {
+				a.SentWHAlarms["test_alert_resolved_skip"] = alertMsgCache{
+					Message:  "Previous alert",
+					SentTime: time.Now().Add(-1 * time.Hour),
+				}
+			},
+		},
+		{
+			name: "resolved message sent when DisableResolveMessage is false",
+			msg: &alertMsg{
+				wh:       true,
+				chain:    "test-chain",
+				message:  "test resolved message",
+				severity: "critical",
+				uniqueId: "test_alert_resolved_send",
+				resolved: true,
+				whURL:    "", // will be set to test server URL
+				alertConfig: &AlertConfig{
+					Webhook: WebhookConfig{
+						SeverityThreshold:     "info",
+						DisableResolveMessage: &[]bool{false}[0],
+					},
+				},
+			},
+			serverResponse:   200,
+			expectError:      false,
+			expectServerCall: true,
+			// Set up existing alert so the resolved message can be sent
+			setupAlarms: func(a *alarmCache) {
+				a.SentWHAlarms["test_alert_resolved_send"] = alertMsgCache{
+					Message:  "Previous alert",
+					SentTime: time.Now().Add(-1 * time.Hour),
+				}
+			},
+		},
+		{
+			name: "resolved message sent when DisableResolveMessage is nil (default)",
+			msg: &alertMsg{
+				wh:       true,
+				chain:    "test-chain",
+				message:  "test resolved message",
+				severity: "critical",
+				uniqueId: "test_alert_resolved_nil",
+				resolved: true,
+				whURL:    "", // will be set to test server URL
+				alertConfig: &AlertConfig{
+					Webhook: WebhookConfig{SeverityThreshold: "info"},
+				},
+			},
+			serverResponse:   200,
+			expectError:      false,
+			expectServerCall: true,
+			// Set up existing alert so the resolved message can be sent
+			setupAlarms: func(a *alarmCache) {
+				a.SentWHAlarms["test_alert_resolved_nil"] = alertMsgCache{
+					Message:  "Previous alert",
+					SentTime: time.Now().Add(-1 * time.Hour),
+				}
+			},
+		},
+		{
+			name: "firing message sent even when DisableResolveMessage is true",
+			msg: &alertMsg{
+				wh:       true,
+				chain:    "test-chain",
+				message:  "test firing message",
+				severity: "critical",
+				uniqueId: "test_alert_firing",
+				resolved: false,
+				whURL:    "", // will be set to test server URL
+				alertConfig: &AlertConfig{
+					Webhook: WebhookConfig{
+						SeverityThreshold:     "info",
+						DisableResolveMessage: &[]bool{true}[0],
+					},
+				},
+			},
+			serverResponse:   200,
+			expectError:      false,
+			expectServerCall: true,
 		},
 	}
 
@@ -530,9 +637,18 @@ func TestNotifyWebhook(t *testing.T) {
 			// Reset alarms for each test
 			testAlarms.SentWHAlarms = make(map[string]alertMsgCache)
 
+			// Run optional alarm setup (e.g., to set up existing alerts for resolved message tests)
+			if tt.setupAlarms != nil {
+				tt.setupAlarms(testAlarms)
+			}
+
+			// Track whether server was called
+			serverCalled := false
+
 			if tt.msg.wh {
 				// Create test server
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					serverCalled = true
 					w.WriteHeader(tt.serverResponse)
 				}))
 				defer server.Close()
@@ -545,6 +661,14 @@ func TestNotifyWebhook(t *testing.T) {
 			}
 			if !tt.expectError && err != nil {
 				t.Errorf("Expected no error but got: %v", err)
+			}
+
+			// Verify server call expectation
+			if tt.expectServerCall && !serverCalled {
+				t.Errorf("Expected server to be called but it was not")
+			}
+			if !tt.expectServerCall && serverCalled {
+				t.Errorf("Expected server NOT to be called but it was")
 			}
 		})
 	}

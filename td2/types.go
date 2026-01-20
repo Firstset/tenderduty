@@ -359,9 +359,10 @@ type SlackConfig struct {
 // WebhookConfig holds the information needed to send alerts to a generic webhook endpoint
 // The payload follows a Grafana-like format for broad compatibility
 type WebhookConfig struct {
-	Enabled           *bool  `yaml:"enabled"`
-	URL               string `yaml:"url"`
-	SeverityThreshold string `yaml:"severity_threshold"`
+	Enabled               *bool  `yaml:"enabled"`
+	URL                   string `yaml:"url"`
+	SeverityThreshold     string `yaml:"severity_threshold"`
+	DisableResolveMessage *bool  `yaml:"disable_resolve_message"`
 }
 
 // HealthcheckConfig holds the information needed to send pings to a healthcheck endpoint
