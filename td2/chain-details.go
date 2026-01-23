@@ -3,7 +3,6 @@ package tenderduty
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -112,8 +111,10 @@ var cosmosPaths = map[string]string{
 }
 var pathMux sync.Mutex
 
-const registryJson = "https://chains.cosmos.directory/"
-const publicRpcUrl = "https://rpc.cosmos.directory:443/"
+const (
+	registryJson = "https://chains.cosmos.directory/"
+	publicRpcUrl = "https://rpc.cosmos.directory:443/"
+)
 
 // a trimmed down version only holding the info we need to create a lookup map
 type registryResults struct {
@@ -164,29 +165,39 @@ func getRegistryUrlByChainName(chainName string) string {
 	return publicRpcUrl + chainName
 }
 
+// CosmosDirectoryResponse wraps the top-level API response from cosmos.directory
+type CosmosDirectoryResponse struct {
+	Chain CosmosDirectoryChainData `json:"chain"`
+}
+
 // CosmosDirectoryChainData holds chain information from cosmos.directory API
 type CosmosDirectoryChainData struct {
-	ChainID   string  `json:"chain_id"`
-	Path      string  `json:"path"`
-	ChainName string  `json:"chain_name"`
-	Symbol    string  `json:"symbol"`
-	Decimals  int     `json:"decimals"`
-	Denom     string  `json:"denom"`
-	Params    CDParams `json:"params"`
-
-	// Staking info
-	BondedTokens    string  `json:"bonded_tokens"`
-	TotalSupply     string  `json:"total_supply"`
-	AnnualProvision string  `json:"annual_provision"`
-	EstimatedAPR    float64 `json:"estimated_apr"`
-	CalculatedAPR   float64 `json:"calculated_apr"`
-
-	// Asset info
-	Assets []CDAsset `json:"assets"`
+	ChainID   string    `json:"chain_id"`
+	Path      string    `json:"path"`
+	ChainName string    `json:"chain_name"`
+	Symbol    string    `json:"symbol"`
+	Decimals  int       `json:"decimals"`
+	Denom     string    `json:"denom"`
+	Params    CDParams  `json:"params"`
+	Assets    []CDAsset `json:"assets"`
 }
 
 // CDParams holds chain parameters from cosmos.directory
 type CDParams struct {
+	// Top-level params fields
+	Authz               bool    `json:"authz"`
+	ActualBlockTime     float64 `json:"actual_block_time"`
+	ActualBlocksPerYear float64 `json:"actual_blocks_per_year"`
+	CurrentBlockHeight  string  `json:"current_block_height"`
+	UnbondingTime       int64   `json:"unbonding_time"`
+	MaxValidators       int     `json:"max_validators"`
+	CommunityTax        float64 `json:"community_tax"`
+	BondedTokens        string  `json:"bonded_tokens"`
+	AnnualProvision     string  `json:"annual_provision"`
+	EstimatedAPR        float64 `json:"estimated_apr"`
+	CalculatedAPR       float64 `json:"calculated_apr"`
+
+	// Nested parameter objects
 	Staking      CDStakingParams      `json:"staking"`
 	Slashing     CDSlashingParams     `json:"slashing"`
 	Distribution CDDistributionParams `json:"distribution"`
@@ -219,14 +230,20 @@ type CDDistributionParams struct {
 	WithdrawAddrEnabled bool   `json:"withdraw_addr_enabled"`
 }
 
+// CDAssetDenomInfo holds denomination info for base/display in assets
+type CDAssetDenomInfo struct {
+	Denom    string `json:"denom"`
+	Exponent int    `json:"exponent"`
+}
+
 // CDAsset holds asset information from cosmos.directory
 type CDAsset struct {
-	Base        string        `json:"base"`
-	Symbol      string        `json:"symbol"`
-	Display     string        `json:"display"`
-	Name        string        `json:"name"`
-	Description string        `json:"description"`
-	DenomUnits  []CDDenomUnit `json:"denom_units"`
+	Base        CDAssetDenomInfo `json:"base"`
+	Symbol      string           `json:"symbol"`
+	Display     CDAssetDenomInfo `json:"display"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	DenomUnits  []CDDenomUnit    `json:"denom_units"`
 }
 
 // CDDenomUnit holds denomination unit information
@@ -236,8 +253,10 @@ type CDDenomUnit struct {
 	Aliases  []string `json:"aliases"`
 }
 
-const chainDataCacheKey = "cosmos_directory_chain_data_"
-const chainDataCacheTTL = 30 * time.Minute
+const (
+	chainDataCacheKey = "cosmos_directory_chain_data_"
+	chainDataCacheTTL = 30 * time.Minute
+)
 
 // fetchCosmosDirectoryChainData fetches chain data from cosmos.directory API
 // chainName is the cosmos.directory path (e.g., "babylon", "osmosis")
@@ -269,10 +288,11 @@ func fetchCosmosDirectoryChainData(chainName string) (*CosmosDirectoryChainData,
 		return nil, err
 	}
 
-	var chainData CosmosDirectoryChainData
-	if err := json.Unmarshal(body, &chainData); err != nil {
+	var response CosmosDirectoryResponse
+	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, err
 	}
+	chainData := response.Chain
 
 	// Verify we got valid data
 	if chainData.ChainID == "" {
@@ -326,7 +346,7 @@ func (cc *ChainConfig) getDenomMetadataFromCosmosDirectory(denom string) *CDAsse
 
 	// First try to find an exact match for the denom
 	for _, asset := range cc.cosmosDirectoryData.Assets {
-		if asset.Base == denom {
+		if asset.Base.Denom == denom {
 			return &asset
 		}
 	}
@@ -340,28 +360,17 @@ func (cc *ChainConfig) getDenomMetadataFromCosmosDirectory(denom string) *CDAsse
 }
 
 // getChainInfoFromCosmosDirectory returns chain info from cosmos.directory data
-// Returns (totalSupply, communityTax, calculatedAPR, ok)
-func (cc *ChainConfig) getChainInfoFromCosmosDirectory() (totalSupply float64, communityTax float64, calculatedAPR float64, ok bool) {
+// Returns (communityTax, calculatedAPR, ok)
+func (cc *ChainConfig) getChainInfoFromCosmosDirectory() (communityTax float64, calculatedAPR float64, ok bool) {
 	if cc.cosmosDirectoryData == nil {
-		return 0, 0, 0, false
+		return 0, 0, false
 	}
 
-	// Parse community tax
-	if cc.cosmosDirectoryData.Params.Distribution.CommunityTax != "" {
-		if _, err := fmt.Sscanf(cc.cosmosDirectoryData.Params.Distribution.CommunityTax, "%f", &communityTax); err != nil {
-			communityTax = 0
-		}
-	}
+	// Get community tax from params (top-level, as float64)
+	communityTax = cc.cosmosDirectoryData.Params.CommunityTax
 
-	// Use calculated APR from cosmos.directory
-	calculatedAPR = cc.cosmosDirectoryData.CalculatedAPR
-
-	// Parse total supply
-	if cc.cosmosDirectoryData.TotalSupply != "" {
-		if _, err := fmt.Sscanf(cc.cosmosDirectoryData.TotalSupply, "%f", &totalSupply); err != nil {
-			totalSupply = 0
-		}
-	}
+	// Use calculated APR from cosmos.directory params
+	calculatedAPR = cc.cosmosDirectoryData.Params.CalculatedAPR
 
 	ok = true
 	return
@@ -394,8 +403,8 @@ func (cc *ChainConfig) getBankMetadataFromCosmosDirectory(denom string) *bank.Me
 	return &bank.Metadata{
 		Description: cdAsset.Description,
 		DenomUnits:  denomUnits,
-		Base:        cdAsset.Base,
-		Display:     cdAsset.Display,
+		Base:        cdAsset.Base.Denom,
+		Display:     cdAsset.Display.Denom,
 		Name:        cdAsset.Name,
 		Symbol:      cdAsset.Symbol,
 	}

@@ -261,10 +261,9 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 			cc.valInfo.ValidatorAPR = cc.baseAPR * (1 - cc.valInfo.CommissionRate)
 		} else {
 			// Try cosmos.directory fallback for APR data
-			cdTotalSupply, cdCommunityTax, cdAPR, ok := cc.getChainInfoFromCosmosDirectory()
+			cdCommunityTax, cdAPR, ok := cc.getChainInfoFromCosmosDirectory()
 			if ok && cdAPR > 0 {
 				l(fmt.Sprintf("✅ using cosmos.directory APR data for chain %s (APR: %.4f)", cc.name, cdAPR))
-				cc.totalSupply = cdTotalSupply
 				cc.communityTax = cdCommunityTax
 				// Use the pre-calculated APR from cosmos.directory as the base APR
 				cc.baseAPR = cdAPR
