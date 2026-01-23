@@ -184,7 +184,8 @@ type ChainConfig struct {
 	inflationRate     float64            // inflation rate of the chain, used for calculating APR
 	baseAPR           float64            // the base APR of a chain
 	denomMetadata     *bank.Metadata     // chain denom metadata
-	cryptoPrice       *utils.CryptoPrice // coin price in a fiat currency
+	cryptoPrice            *utils.CryptoPrice        // coin price in a fiat currency
+	cosmosDirectoryData    *CosmosDirectoryChainData // cached chain data from cosmos.directory
 
 	minSignedPerWindow      float64 // instantly see the validator risk level
 	blocksResults           []int
@@ -230,6 +231,10 @@ type ChainConfig struct {
 	Slug string `yaml:"slug"`
 	// The inflation rate of the chain, if specified the value overrides the query result
 	InflationRateOverriding float64 `yaml:"inflationRate"`
+	// ChainName is the cosmos.directory path (e.g., "babylon", "osmosis").
+	// If not set, defaults to lowercase of the chain's display name.
+	// Used to fetch chain params from cosmos.directory and as RPC fallback.
+	ChainName string `yaml:"chain_name"`
 }
 
 // mkUpdate returns the info needed by prometheus for a gauge.

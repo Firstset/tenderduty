@@ -165,6 +165,12 @@ chains:
     # the name/slug of this chain, used by CoinMarketCap API to convert the price
     slug: osmosis
 
+    # The chain name as it appears on cosmos.directory (e.g., "osmosis", "babylon", "cosmoshub")
+    # This enables automatic fetching of chain parameters (denom metadata, APR, etc.) from cosmos.directory
+    # and provides RPC fallback when configured nodes fail.
+    # If not specified, defaults to lowercase of the chain display name (e.g., "Osmosis" -> "osmosis")
+    chain_name: osmosis
+
     # Without specifying this option, the inflationRate is queried from a RPC call, but it may not be available for some chains
     # If the inflation rate cannot be queried, you can use this option to explicitly set the value
     inflationRate: 0.04

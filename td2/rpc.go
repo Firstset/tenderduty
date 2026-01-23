@@ -19,6 +19,16 @@ import (
 // newRpc sets up the rpc client used for monitoring. It will try nodes in order until a working node is found.
 // it will also get some initial info on the validator's status.
 func (cc *ChainConfig) newRpc() error {
+	// Try to load cosmos.directory data for this chain
+	// This is done early so we can use it for RPC fallback and chain params
+	if cc.cosmosDirectoryData == nil {
+		if err := cc.loadCosmosDirectoryData(); err != nil {
+			l("ℹ️ cosmos.directory data not available for", cc.name, "(chain_name: "+cc.getEffectiveChainName()+", chain_id: "+cc.ChainId+")", "-", err)
+		} else {
+			l("✅ loaded cosmos.directory data for", cc.name, "(chain_name: "+cc.getEffectiveChainName()+", chain_id: "+cc.ChainId+")")
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	var anyWorking bool // if healthchecks are running, we will skip to the first known good node.
@@ -91,11 +101,26 @@ func (cc *ChainConfig) newRpc() error {
 		}
 		return nil
 	}
+	// Try cosmos.directory RPC proxy using chain_name (or lowercase display name)
+	// This is tried before the legacy PublicFallback to use the more reliable chain_name lookup
+	{
+		chainName := cc.getEffectiveChainName()
+		u := getRegistryUrlByChainName(chainName)
+		node := guessPublicEndpoint(u)
+		l(cc.ChainId, "⛑ attempting to use cosmos.directory fallback node (chain_name:", chainName+")", node)
+		if _, failed, _ := tryUrl(node); !failed {
+			l(cc.ChainId, "⛑ connected to cosmos.directory endpoint", node)
+			return nil
+		}
+		l("⚠️ could not connect to cosmos.directory fallback for chain_name:", chainName)
+	}
+
+	// Legacy fallback using chain_id lookup (when PublicFallback is explicitly enabled)
 	if cc.PublicFallback {
 		if u, ok := getRegistryUrl(cc.ChainId); ok {
 			node := guessPublicEndpoint(u)
-			l(cc.ChainId, "⛑ attemtping to use public fallback node", node)
-			if _, kk, _ := tryUrl(node); !kk {
+			l(cc.ChainId, "⛑ attempting to use public fallback node (chain_id lookup)", node)
+			if _, failed, _ := tryUrl(node); !failed {
 				l(cc.ChainId, "⛑ connected to public endpoint", node)
 				return nil
 			}
