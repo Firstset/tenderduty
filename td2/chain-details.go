@@ -3,6 +3,7 @@ package tenderduty
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -322,8 +323,13 @@ func (cc *ChainConfig) loadCosmosDirectoryData() error {
 	data, err := fetchCosmosDirectoryChainData(chainName)
 	if err != nil {
 		return err
+	} else {
+		if data.ChainID != cc.ChainId {
+			return fmt.Errorf("configured chain ID (%s) does not match the chain ID from CosmosDirectory (%s), you can ignore this error if the validator is running in testnet", cc.ChainId, data.ChainID)
+		} else {
+			cc.cosmosDirectoryData = data
+		}
 	}
-	cc.cosmosDirectoryData = data
 	return nil
 }
 

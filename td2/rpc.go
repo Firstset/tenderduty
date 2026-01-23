@@ -23,9 +23,9 @@ func (cc *ChainConfig) newRpc() error {
 	// This is done early so we can use it for RPC fallback and chain params
 	if cc.cosmosDirectoryData == nil {
 		if err := cc.loadCosmosDirectoryData(); err != nil {
-			l("ℹ️ cosmos.directory data not available for", cc.name, "(chain_name:", cc.getEffectiveChainName()+")", "-", err)
+			l("ℹ️ cosmos.directory data not available for", cc.name, "(chain_name: "+cc.getEffectiveChainName()+", chain_id: "+cc.ChainId+")", "-", err)
 		} else {
-			l("✅ loaded cosmos.directory data for", cc.name, "(chain_name:", cc.getEffectiveChainName()+")")
+			l("✅ loaded cosmos.directory data for", cc.name, "(chain_name: "+cc.getEffectiveChainName()+", chain_id: "+cc.ChainId+")")
 		}
 	}
 
