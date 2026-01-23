@@ -255,12 +255,17 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 			if cc.InflationRateOverriding != 0 {
 				// Override the base APR with the configured value
 				inflationRate = cc.InflationRateOverriding
+				l(fmt.Sprintf("based on the config, inflation rate of chain %s has been overriden to %f", cc.name, cc.InflationRateOverriding))
 			}
 			cc.inflationRate = inflationRate
 			cc.baseAPR = inflationRate * (1 - communityTax) * totalSupply / cc.totalBondedTokens
 			cc.valInfo.ValidatorAPR = cc.baseAPR * (1 - cc.valInfo.CommissionRate)
 		} else {
-			// Try cosmos.directory fallback for APR data
+			l(fmt.Errorf("failed to query APR-related data for chain %s via ABCI (err: %w)", cc.name, err))
+		}
+
+		if err != nil || cc.baseAPR == 0 {
+			// Try cosmos.directory fallback for APR data, when it failed to query via ABCI, or the previously calculated base APR is zero
 			cdCommunityTax, cdAPR, ok := cc.getChainInfoFromCosmosDirectory()
 			if ok && cdAPR > 0 {
 				l(fmt.Sprintf("✅ using cosmos.directory APR data for chain %s (APR: %.4f)", cc.name, cdAPR))
@@ -269,7 +274,7 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 				cc.baseAPR = cdAPR
 				cc.valInfo.ValidatorAPR = cc.baseAPR * (1 - cc.valInfo.CommissionRate)
 			} else {
-				l(fmt.Errorf("failed to query APR-related data for chain %s via ABCI (err: %w) and cosmos.directory fallback not available", cc.name, err))
+				l(fmt.Sprintf("APR-related data for chain %s from cosmos.directory fallback not available", cc.name))
 			}
 		}
 
