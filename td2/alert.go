@@ -27,12 +27,15 @@ type alertMsg struct {
 	slk  bool
 	wh   bool
 
-	severity string
-	resolved bool
-	chain    string
-	message  string
-	uniqueId string
-	key      string
+	severity       string
+	resolved       bool
+	chain          string
+	chainName      string
+	valoperAddress string
+	valconsAddress string
+	message        string
+	uniqueId       string
+	key            string
 
 	tgChannel  string
 	tgKey      string
@@ -456,10 +459,13 @@ func notifyWebhook(msg *alertMsg) (err error) {
 	alert := WebhookAlert{
 		Status: status,
 		Labels: map[string]string{
-			"alertname": msg.uniqueId,
-			"chain":     msg.chain,
-			"severity":  msg.severity,
-			"source":    "tenderduty",
+			"alertname":       msg.uniqueId,
+			"chain":           msg.chain,
+			"chain_name":      msg.chainName,
+			"valoper_address": msg.valoperAddress,
+			"valcons_address": msg.valconsAddress,
+			"severity":        msg.severity,
+			"source":          "tenderduty",
 		},
 		Annotations: map[string]string{
 			"summary":     msg.message,
@@ -521,41 +527,53 @@ func getAlarms(chain string) string {
 }
 
 // alert creates a universal alert and pushes it to the alertChan to be delivered to appropriate services
-func (c *Config) alert(chainName, message, severity string, resolved bool, id *string) {
+func (c *Config) alert(configName, message, severity string, resolved bool, id *string) {
 	if id == nil {
 		return
 	}
 	c.chainsMux.RLock()
+	cc := c.Chains[configName]
+	if cc == nil {
+		c.chainsMux.RUnlock()
+		return
+	}
+	valcons := ""
+	if cc.valInfo != nil {
+		valcons = cc.valInfo.Valcons
+	}
 	a := &alertMsg{
-		pd:           boolVal(c.DefaultAlertConfig.Pagerduty.Enabled) && boolVal(c.Chains[chainName].Alerts.Pagerduty.Enabled),
-		disc:         boolVal(c.DefaultAlertConfig.Discord.Enabled) && boolVal(c.Chains[chainName].Alerts.Discord.Enabled),
-		tg:           boolVal(c.DefaultAlertConfig.Telegram.Enabled) && boolVal(c.Chains[chainName].Alerts.Telegram.Enabled),
-		slk:          boolVal(c.DefaultAlertConfig.Slack.Enabled) && boolVal(c.Chains[chainName].Alerts.Slack.Enabled),
-		wh:           boolVal(c.DefaultAlertConfig.Webhook.Enabled) && boolVal(c.Chains[chainName].Alerts.Webhook.Enabled),
-		severity:     severity,
-		resolved:     resolved,
-		chain:        fmt.Sprintf("%s (%s)", chainName, c.Chains[chainName].ChainId),
-		message:      message,
-		uniqueId:     *id,
-		key:          c.Chains[chainName].Alerts.Pagerduty.ApiKey,
-		tgChannel:    c.Chains[chainName].Alerts.Telegram.Channel,
-		tgKey:        c.Chains[chainName].Alerts.Telegram.ApiKey,
-		tgMentions:   strings.Join(c.Chains[chainName].Alerts.Telegram.Mentions, " "),
-		discHook:     c.Chains[chainName].Alerts.Discord.Webhook,
-		discMentions: strings.Join(c.Chains[chainName].Alerts.Discord.Mentions, " "),
-		slkHook:      c.Chains[chainName].Alerts.Slack.Webhook,
-		whURL:        c.Chains[chainName].Alerts.Webhook.URL,
-		alertConfig:  &c.Chains[chainName].Alerts,
+		pd:             boolVal(c.DefaultAlertConfig.Pagerduty.Enabled) && boolVal(cc.Alerts.Pagerduty.Enabled),
+		disc:           boolVal(c.DefaultAlertConfig.Discord.Enabled) && boolVal(cc.Alerts.Discord.Enabled),
+		tg:             boolVal(c.DefaultAlertConfig.Telegram.Enabled) && boolVal(cc.Alerts.Telegram.Enabled),
+		slk:            boolVal(c.DefaultAlertConfig.Slack.Enabled) && boolVal(cc.Alerts.Slack.Enabled),
+		wh:             boolVal(c.DefaultAlertConfig.Webhook.Enabled) && boolVal(cc.Alerts.Webhook.Enabled),
+		severity:       severity,
+		resolved:       resolved,
+		chain:          fmt.Sprintf("%s (%s)", configName, cc.ChainId),
+		chainName:      cc.ChainName,
+		valoperAddress: cc.ValAddress,
+		valconsAddress: valcons,
+		message:        message,
+		uniqueId:       *id,
+		key:            cc.Alerts.Pagerduty.ApiKey,
+		tgChannel:      cc.Alerts.Telegram.Channel,
+		tgKey:          cc.Alerts.Telegram.ApiKey,
+		tgMentions:     strings.Join(cc.Alerts.Telegram.Mentions, " "),
+		discHook:       cc.Alerts.Discord.Webhook,
+		discMentions:   strings.Join(cc.Alerts.Discord.Mentions, " "),
+		slkHook:        cc.Alerts.Slack.Webhook,
+		whURL:          cc.Alerts.Webhook.URL,
+		alertConfig:    &cc.Alerts,
 	}
 	c.alertChan <- a
 	c.chainsMux.RUnlock()
 	alarms.notifyMux.Lock()
 	defer alarms.notifyMux.Unlock()
-	if alarms.AllAlarms[chainName] == nil {
-		alarms.AllAlarms[chainName] = make(map[string]alertMsgCache)
+	if alarms.AllAlarms[configName] == nil {
+		alarms.AllAlarms[configName] = make(map[string]alertMsgCache)
 	}
-	if resolved && !alarms.AllAlarms[chainName][*id].SentTime.IsZero() {
-		delete(alarms.AllAlarms[chainName], *id)
+	if resolved && !alarms.AllAlarms[configName][*id].SentTime.IsZero() {
+		delete(alarms.AllAlarms[configName], *id)
 		return
 	} else if resolved {
 		return
@@ -564,7 +582,7 @@ func (c *Config) alert(chainName, message, severity string, resolved bool, id *s
 		Message:  message,
 		SentTime: time.Now(),
 	}
-	alarms.AllAlarms[chainName][*id] = cache
+	alarms.AllAlarms[configName][*id] = cache
 }
 
 func evaluateConsecutiveBlocksMissedAlert(cc *ChainConfig) (bool, bool) {
