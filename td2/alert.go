@@ -532,29 +532,38 @@ func (c *Config) alert(configName, message, severity string, resolved bool, id *
 		return
 	}
 	c.chainsMux.RLock()
+	cc := c.Chains[configName]
+	if cc == nil {
+		c.chainsMux.RUnlock()
+		return
+	}
+	valcons := ""
+	if cc.valInfo != nil {
+		valcons = cc.valInfo.Valcons
+	}
 	a := &alertMsg{
-		pd:             boolVal(c.DefaultAlertConfig.Pagerduty.Enabled) && boolVal(c.Chains[configName].Alerts.Pagerduty.Enabled),
-		disc:           boolVal(c.DefaultAlertConfig.Discord.Enabled) && boolVal(c.Chains[configName].Alerts.Discord.Enabled),
-		tg:             boolVal(c.DefaultAlertConfig.Telegram.Enabled) && boolVal(c.Chains[configName].Alerts.Telegram.Enabled),
-		slk:            boolVal(c.DefaultAlertConfig.Slack.Enabled) && boolVal(c.Chains[configName].Alerts.Slack.Enabled),
-		wh:             boolVal(c.DefaultAlertConfig.Webhook.Enabled) && boolVal(c.Chains[configName].Alerts.Webhook.Enabled),
+		pd:             boolVal(c.DefaultAlertConfig.Pagerduty.Enabled) && boolVal(cc.Alerts.Pagerduty.Enabled),
+		disc:           boolVal(c.DefaultAlertConfig.Discord.Enabled) && boolVal(cc.Alerts.Discord.Enabled),
+		tg:             boolVal(c.DefaultAlertConfig.Telegram.Enabled) && boolVal(cc.Alerts.Telegram.Enabled),
+		slk:            boolVal(c.DefaultAlertConfig.Slack.Enabled) && boolVal(cc.Alerts.Slack.Enabled),
+		wh:             boolVal(c.DefaultAlertConfig.Webhook.Enabled) && boolVal(cc.Alerts.Webhook.Enabled),
 		severity:       severity,
 		resolved:       resolved,
-		chain:          fmt.Sprintf("%s (%s)", configName, c.Chains[configName].ChainId),
-		chainName:      c.Chains[configName].ChainName,
-		valoperAddress: c.Chains[configName].ValAddress,
-		valconsAddress: c.Chains[configName].valInfo.Valcons,
+		chain:          fmt.Sprintf("%s (%s)", configName, cc.ChainId),
+		chainName:      cc.ChainName,
+		valoperAddress: cc.ValAddress,
+		valconsAddress: valcons,
 		message:        message,
 		uniqueId:       *id,
-		key:            c.Chains[configName].Alerts.Pagerduty.ApiKey,
-		tgChannel:      c.Chains[configName].Alerts.Telegram.Channel,
-		tgKey:          c.Chains[configName].Alerts.Telegram.ApiKey,
-		tgMentions:     strings.Join(c.Chains[configName].Alerts.Telegram.Mentions, " "),
-		discHook:       c.Chains[configName].Alerts.Discord.Webhook,
-		discMentions:   strings.Join(c.Chains[configName].Alerts.Discord.Mentions, " "),
-		slkHook:        c.Chains[configName].Alerts.Slack.Webhook,
-		whURL:          c.Chains[configName].Alerts.Webhook.URL,
-		alertConfig:    &c.Chains[configName].Alerts,
+		key:            cc.Alerts.Pagerduty.ApiKey,
+		tgChannel:      cc.Alerts.Telegram.Channel,
+		tgKey:          cc.Alerts.Telegram.ApiKey,
+		tgMentions:     strings.Join(cc.Alerts.Telegram.Mentions, " "),
+		discHook:       cc.Alerts.Discord.Webhook,
+		discMentions:   strings.Join(cc.Alerts.Discord.Mentions, " "),
+		slkHook:        cc.Alerts.Slack.Webhook,
+		whURL:          cc.Alerts.Webhook.URL,
+		alertConfig:    &cc.Alerts,
 	}
 	c.alertChan <- a
 	c.chainsMux.RUnlock()

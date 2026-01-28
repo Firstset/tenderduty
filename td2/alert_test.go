@@ -1,9 +1,10 @@
 package tenderduty
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"sync"
 	"testing"
@@ -11,6 +12,12 @@ import (
 
 	gov "github.com/cosmos/cosmos-sdk/x/gov/types"
 )
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
 
 // Helper function to create test config with minimal required fields
 func createTestConfig() *Config {
@@ -441,12 +448,20 @@ func TestNotifySlack(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.msg.slk {
-				// Create test server
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.WriteHeader(tt.serverResponse)
-				}))
-				defer server.Close()
-				tt.msg.slkHook = server.URL
+				originalTransport := http.DefaultTransport
+				// Avoid binding a local port; simulate Slack responses via a mock transport.
+				http.DefaultTransport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: tt.serverResponse,
+						Body:       io.NopCloser(bytes.NewBuffer(nil)),
+						Header:     make(http.Header),
+						Request:    req,
+					}, nil
+				})
+				t.Cleanup(func() {
+					http.DefaultTransport = originalTransport
+				})
+				tt.msg.slkHook = "http://slack.test.local/"
 			}
 
 			err := notifySlack(tt.msg)
@@ -646,13 +661,21 @@ func TestNotifyWebhook(t *testing.T) {
 			serverCalled := false
 
 			if tt.msg.wh {
-				// Create test server
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				originalTransport := http.DefaultTransport
+				// Avoid binding a local port; simulate webhook responses via a mock transport.
+				http.DefaultTransport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 					serverCalled = true
-					w.WriteHeader(tt.serverResponse)
-				}))
-				defer server.Close()
-				tt.msg.whURL = server.URL
+					return &http.Response{
+						StatusCode: tt.serverResponse,
+						Body:       io.NopCloser(bytes.NewBuffer(nil)),
+						Header:     make(http.Header),
+						Request:    req,
+					}, nil
+				})
+				t.Cleanup(func() {
+					http.DefaultTransport = originalTransport
+				})
+				tt.msg.whURL = "http://webhook.test.local/"
 			}
 
 			err := notifyWebhook(tt.msg)
@@ -683,6 +706,7 @@ func TestConfigAlert(t *testing.T) {
 			"test-chain": {
 				ChainId:    "test-chain-1",
 				ValAddress: "testval123",
+				valInfo:    &ValInfo{Valcons: "testvalcons"},
 				Alerts: AlertConfig{
 					Pagerduty: PDConfig{
 						Enabled: &[]bool{true}[0],
@@ -1939,10 +1963,10 @@ func TestEvaluateStakeChangeAlert(t *testing.T) {
 			testAlarms.AllAlarms = make(map[string]map[string]alertMsgCache)
 
 			cc := &ChainConfig{
-				name:       "test-chain",
-				ChainId:    "test-chain-1",
-				ValAddress: "testval123",
-				valInfo:    tt.valInfo,
+				name:        "test-chain",
+				ChainId:     "test-chain-1",
+				ValAddress:  "testval123",
+				valInfo:     tt.valInfo,
 				lastValInfo: tt.lastValInfo,
 				Alerts: AlertConfig{
 					StakeChangeIncreaseThreshold: &[]float64{0.15}[0],
