@@ -362,6 +362,27 @@ func (d *DefaultProvider) QuerySlashingParams(ctx context.Context) (*slashing.Pa
 	return &params.Params, nil
 }
 
+func (d *DefaultProvider) QueryStakingParams(ctx context.Context) (*staking.Params, error) {
+	qParams := &staking.QueryParamsRequest{}
+	b, err := qParams.Marshal()
+	if err != nil {
+		return nil, fmt.Errorf("marshal staking params: %w", err)
+	}
+	resp, err := d.ChainConfig.client.ABCIQuery(ctx, "/cosmos.staking.v1beta1.Query/Params", b)
+	if err != nil {
+		return nil, fmt.Errorf("query staking params: %w", err)
+	}
+	if resp.Response.Value == nil {
+		return nil, errors.New("🛑 could not query staking params, got empty response")
+	}
+	params := &staking.QueryParamsResponse{}
+	err = params.Unmarshal(resp.Response.Value)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal staking params: %w", err)
+	}
+	return &params.Params, nil
+}
+
 func (d *DefaultProvider) QueryChainInfo(ctx context.Context) (totalSupply float64, communityTax float64, inflationRate float64, err error) {
 	// Query total supply using bank module
 	supplyQueryParams := bank.QuerySupplyOfRequest{

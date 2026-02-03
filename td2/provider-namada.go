@@ -295,6 +295,10 @@ func (d *NamadaProvider) QuerySlashingParams(ctx context.Context) (*slashing.Par
 	return &slashing.Params{SignedBlocksWindow: int64(livenessInfo.LivenessWindowLen), MinSignedPerWindow: cosmos_sdk_types.MustNewDecFromStr(livenessInfo.LivenessThreshold.String())}, nil
 }
 
+func (d *NamadaProvider) QueryStakingParams(ctx context.Context) (*staking.Params, error) {
+	return nil, errors.New("QueryStakingParams with ABCIQuery not implemented for Namada")
+}
+
 func (d *NamadaProvider) QueryDenomMetadata(ctx context.Context, denom string) (medatada *bank.Metadata, err error) {
 	return nil, errors.New("QueryDenomMetadata with ABCIQuery not implemented for Namada")
 }

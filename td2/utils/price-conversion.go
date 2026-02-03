@@ -239,6 +239,9 @@ func ConvertDecCoinToDisplayUnit(coins []github_com_cosmos_cosmos_sdk_types.DecC
 	} else {
 		displayDenom = metadata.Display
 	}
+	if err := github_com_cosmos_cosmos_sdk_types.ValidateDenom(displayDenom); err != nil {
+		return nil, fmt.Errorf("invalid display denom %q for base %q: %w", displayDenom, metadata.Base, err)
+	}
 
 	// Find the exponent for the display denom
 	foundDisplayDenom := false
@@ -325,10 +328,16 @@ func ConvertFloatInBaseUnitToDisplayUnit(value float64, metadata bank.Metadata) 
 	// If no display is set, default to base
 	if metadata.Display == "" {
 		displayDenom = metadata.Base
+		if err := github_com_cosmos_cosmos_sdk_types.ValidateDenom(displayDenom); err != nil {
+			return 0, "", fmt.Errorf("invalid display denom %q for base %q: %w", displayDenom, metadata.Base, err)
+		}
 		// If display is base, no conversion needed
 		return value, displayDenom, nil
 	} else {
 		displayDenom = metadata.Display
+	}
+	if err := github_com_cosmos_cosmos_sdk_types.ValidateDenom(displayDenom); err != nil {
+		return 0, "", fmt.Errorf("invalid display denom %q for base %q: %w", displayDenom, metadata.Base, err)
 	}
 
 	// Find the exponent for the display denom

@@ -196,26 +196,48 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 	rewards, commission, err := provider.QueryValidatorSelfDelegationRewardsAndCommission(ctx)
 	if err == nil {
 		// query the chain's denom metadata, only query once since this does not change
-		if first && rewards != nil && len(*rewards) > 0 {
-			bankMeta, err := provider.QueryDenomMetadata(ctx, (*rewards)[0].Denom)
+		if first {
+			bondDenom := ""
+			stakingParams, err := provider.QueryStakingParams(ctx)
 			if err == nil {
-				cc.denomMetadata = bankMeta
+				bondDenom = stakingParams.BondDenom
 			} else {
-				l(fmt.Errorf("cannot query bank metadata for chain %s via ABCI, err: %w, trying cosmos.directory fallback", cc.name, err))
-				// Try cosmos.directory fallback first
-				bankMeta = cc.getBankMetadataFromCosmosDirectory((*rewards)[0].Denom)
-				if bankMeta != nil {
+				l(fmt.Errorf("cannot query staking params for chain %s via ABCI, err: %w", cc.name, err))
+			}
+			if bondDenom == "" && cc.hasCosmosDirectoryData() {
+				if cc.cosmosDirectoryData.Params.Staking.BondDenom != "" {
+					bondDenom = cc.cosmosDirectoryData.Params.Staking.BondDenom
+				} else if cc.cosmosDirectoryData.Denom != "" {
+					bondDenom = cc.cosmosDirectoryData.Denom
+				}
+			}
+			if bondDenom == "" && rewards != nil && len(*rewards) > 0 {
+				bondDenom = (*rewards)[0].Denom
+			}
+
+			if bondDenom != "" {
+				bankMeta, err := provider.QueryDenomMetadata(ctx, bondDenom)
+				if err == nil {
 					cc.denomMetadata = bankMeta
-					l(fmt.Sprintf("✅ loaded bank metadata for chain %s from cosmos.directory", cc.name))
 				} else {
-					l(fmt.Sprintf("ℹ️ cosmos.directory bank metadata not available for chain %s, trying GitHub fallback", cc.name))
-					bankMeta, err = cc.fetchBankMetadataFromGitHub()
-					if err == nil {
+					l(fmt.Errorf("cannot query bank metadata for chain %s via ABCI, err: %w, trying cosmos.directory fallback", cc.name, err))
+					// Try cosmos.directory fallback (assets first, then chain data)
+					bankMeta = cc.getBankMetadataFromCosmosDirectory(bondDenom)
+					if bankMeta != nil {
 						cc.denomMetadata = bankMeta
+						l(fmt.Sprintf("✅ loaded bank metadata for chain %s from cosmos.directory", cc.name))
 					} else {
-						l(fmt.Errorf("cannot find bank metadata for chain %s in the GitHub JSON file, err: %w", cc.name, err))
+						l(fmt.Sprintf("ℹ️ cosmos.directory bank metadata not available for chain %s, trying GitHub fallback", cc.name))
+						bankMeta, err = cc.fetchBankMetadataFromGitHub()
+						if err == nil {
+							cc.denomMetadata = bankMeta
+						} else {
+							l(fmt.Errorf("cannot find bank metadata for chain %s in the GitHub JSON file, err: %w", cc.name, err))
+						}
 					}
 				}
+			} else {
+				l(fmt.Sprintf("⚠️ could not determine bond denom for chain %s, skipping denom metadata query", cc.name))
 			}
 		}
 

@@ -177,6 +177,7 @@ type CosmosDirectoryChainData struct {
 	Path      string    `json:"path"`
 	ChainName string    `json:"chain_name"`
 	Symbol    string    `json:"symbol"`
+	Display   string    `json:"display"`
 	Decimals  int       `json:"decimals"`
 	Denom     string    `json:"denom"`
 	Params    CDParams  `json:"params"`
@@ -387,7 +388,35 @@ func (cc *ChainConfig) getChainInfoFromCosmosDirectory() (communityTax float64, 
 func (cc *ChainConfig) getBankMetadataFromCosmosDirectory(denom string) *bank.Metadata {
 	cdAsset := cc.getDenomMetadataFromCosmosDirectory(denom)
 	if cdAsset == nil {
-		return nil
+		if cc.cosmosDirectoryData == nil || cc.cosmosDirectoryData.Denom == "" {
+			return nil
+		}
+		display := cc.cosmosDirectoryData.Display
+		if display == "" {
+			display = cc.cosmosDirectoryData.Symbol
+		}
+
+		denomUnits := []*bank.DenomUnit{
+			{
+				Denom:    cc.cosmosDirectoryData.Denom,
+				Exponent: 0,
+			},
+		}
+		if display != "" && display != cc.cosmosDirectoryData.Denom {
+			denomUnits = append(denomUnits, &bank.DenomUnit{
+				Denom:    display,
+				Exponent: uint32(cc.cosmosDirectoryData.Decimals),
+			})
+		}
+
+		return &bank.Metadata{
+			Description: "",
+			DenomUnits:  denomUnits,
+			Base:        cc.cosmosDirectoryData.Denom,
+			Display:     display,
+			Name:        cc.cosmosDirectoryData.ChainName,
+			Symbol:      cc.cosmosDirectoryData.Symbol,
+		}
 	}
 
 	// Convert CDDenomUnit to bank.DenomUnit
