@@ -754,6 +754,7 @@ type ChainProvider interface {
 	QueryValidatorInfo(ctx context.Context) (pub []byte, moniker string, jailed bool, bonded bool, delegatedTokens float64, commissionRate float64, err error)
 	QuerySigningInfo(ctx context.Context) (*slashing.ValidatorSigningInfo, error)
 	QuerySlashingParams(ctx context.Context) (*slashing.Params, error)
+	QueryStakingParams(ctx context.Context) (*staking.Params, error)
 	QueryValidatorVotingPool(ctx context.Context) (votingPool *staking.Pool, err error)
 	QueryValidatorSelfDelegationRewardsAndCommission(ctx context.Context) (rewards *github_com_cosmos_cosmos_sdk_types.DecCoins, commission *github_com_cosmos_cosmos_sdk_types.DecCoins, err error)
 	QueryDenomMetadata(ctx context.Context, denom string) (medatada *bank.Metadata, err error)

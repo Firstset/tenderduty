@@ -950,6 +950,19 @@ func evaluateUnclaimedRewardsAlert(cc *ChainConfig) (bool, bool) {
 			}
 		}
 
+		// fallback to cosmos.directory chain data if available
+		if cc.denomMetadata == nil && cc.hasCosmosDirectoryData() {
+			if bankMeta := cc.getBankMetadataFromCosmosDirectory(targetDenom); bankMeta != nil {
+				cc.denomMetadata = bankMeta
+				addDenom(cc.denomMetadata.Base)
+				addDenom(cc.denomMetadata.Display)
+				targetDenom = cc.denomMetadata.Display
+				if targetDenom == "" {
+					targetDenom = cc.denomMetadata.Base
+				}
+			}
+		}
+
 		// when `cc.denomMetadata` is nil, we try to infer the denom from the rewards
 		if len(targetDenoms) == 0 {
 			if selfRewardsLen > 0 {
@@ -1009,6 +1022,21 @@ func evaluateUnclaimedRewardsAlert(cc *ChainConfig) (bool, bool) {
 
 		if totalAmount.IsZero() {
 			return alert, resolved
+		}
+
+		if err := github_com_cosmos_cosmos_sdk_types.ValidateDenom(targetDenom); err != nil {
+			fallback := ""
+			if len(nativeCoins) > 0 {
+				if errFallback := github_com_cosmos_cosmos_sdk_types.ValidateDenom(nativeCoins[0].Denom); errFallback == nil {
+					fallback = nativeCoins[0].Denom
+				}
+			}
+			if fallback == "" {
+				l(fmt.Errorf("invalid target denom %q for %s: %w", targetDenom, cc.name, err))
+				return alert, resolved
+			}
+			l(fmt.Errorf("invalid target denom %q for %s: %w; falling back to %q", targetDenom, cc.name, err, fallback))
+			targetDenom = fallback
 		}
 
 		totalRewards := github_com_cosmos_cosmos_sdk_types.NewDecCoinFromDec(targetDenom, totalAmount)
