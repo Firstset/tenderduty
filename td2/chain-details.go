@@ -178,7 +178,7 @@ type CosmosDirectoryChainData struct {
 	ChainName string    `json:"chain_name"`
 	Symbol    string    `json:"symbol"`
 	Display   string    `json:"display"`
-	Decimals  int       `json:"decimals"`
+	Decimals  uint32    `json:"decimals"`
 	Denom     string    `json:"denom"`
 	Params    CDParams  `json:"params"`
 	Assets    []CDAsset `json:"assets"`
@@ -405,7 +405,7 @@ func (cc *ChainConfig) getBankMetadataFromCosmosDirectory(denom string) *bank.Me
 		if display != "" && display != cc.cosmosDirectoryData.Denom {
 			denomUnits = append(denomUnits, &bank.DenomUnit{
 				Denom:    display,
-				Exponent: uint32(cc.cosmosDirectoryData.Decimals),
+				Exponent: cc.cosmosDirectoryData.Decimals,
 			})
 		}
 
