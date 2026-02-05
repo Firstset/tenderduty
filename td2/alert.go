@@ -1011,7 +1011,7 @@ func evaluateUnclaimedRewardsAlert(cc *ChainConfig) (bool, bool) {
 			if err == nil {
 				nativeCoins = *convertedCoins
 			} else {
-				l(slog.LevelError, fmt.Errorf("cannot convert rewards/commission to display unit for %s, err: %w", cc.name, err))
+				l(slog.LevelDebug, fmt.Errorf("cannot convert rewards/commission to display unit for %s, err: %w", cc.name, err))
 			}
 		}
 
@@ -1035,7 +1035,7 @@ func evaluateUnclaimedRewardsAlert(cc *ChainConfig) (bool, bool) {
 				l(slog.LevelError, fmt.Errorf("invalid target denom %q for %s: %w", targetDenom, cc.name, err))
 				return alert, resolved
 			}
-			l(slog.LevelError, fmt.Errorf("invalid target denom %q for %s: %w; falling back to %q", targetDenom, cc.name, err, fallback))
+			l(slog.LevelDebug, fmt.Errorf("invalid target denom %q for %s: %w; falling back to %q", targetDenom, cc.name, err, fallback))
 			targetDenom = fallback
 		}
 

@@ -248,7 +248,7 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 			if err == nil {
 				rewards = rewardsConverted
 			} else {
-				l(slog.LevelError, fmt.Errorf("cannot convert rewards to its display unit for chain %s, err: %w, the value will remain in the base unit", cc.name, err))
+				l(slog.LevelDebug, fmt.Errorf("cannot convert rewards to its display unit for chain %s, err: %w, the value will remain in the base unit", cc.name, err))
 			}
 		}
 
@@ -257,7 +257,7 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 			if err == nil {
 				commission = commissionConverted
 			} else {
-				l(slog.LevelError, fmt.Errorf("cannot convert commission to its display unit for chain %s, err: %w, the value will remain in the base unit", cc.name, err))
+				l(slog.LevelDebug, fmt.Errorf("cannot convert commission to its display unit for chain %s, err: %w, the value will remain in the base unit", cc.name, err))
 			}
 		}
 
