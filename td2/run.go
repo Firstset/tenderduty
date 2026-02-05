@@ -67,7 +67,7 @@ func Run(configFile, stateFile, chainConfigDirectory string, password *string, d
 
 	if td.EnableDash {
 		go dash.Serve(td.Listen, td.updateChan, td.logChan, td.HideLogs, devMode)
-		l(slog.LevelInfo, "starting dashboard on", td.Listen)
+		l(slog.LevelInfo, "starting dashboard on ", td.Listen)
 	} else {
 		go func() {
 			for {
@@ -147,7 +147,7 @@ func saveOnExit(stateFile string, saved chan any) {
 		defer close(saved)
 		slog.Info("saving state")
 		//#nosec -- variable specified on command line
-		f, e := os.OpenFile(stateFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+		f, e := os.OpenFile(stateFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 		if e != nil {
 			slog.Error("failed to open state file for writing", "err", e)
 			return

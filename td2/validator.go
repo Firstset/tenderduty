@@ -179,7 +179,7 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 			}
 		}
 		if first {
-			l("⚙️", cc.ValAddress[:20], "... is using consensus key:", cc.valInfo.Valcons)
+			l("⚙️ ", cc.ValAddress[:20], "... is using consensus key: ", cc.valInfo.Valcons)
 		}
 	}
 

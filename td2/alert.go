@@ -1006,10 +1006,12 @@ func evaluateUnclaimedRewardsAlert(cc *ChainConfig) (bool, bool) {
 			return alert, resolved
 		}
 
+		convertedToDisplay := false
 		if cc.denomMetadata != nil {
 			convertedCoins, err := utils.ConvertDecCoinToDisplayUnit(nativeCoins, *cc.denomMetadata)
 			if err == nil {
 				nativeCoins = *convertedCoins
+				convertedToDisplay = true
 			} else {
 				l(slog.LevelDebug, fmt.Errorf("cannot convert rewards/commission to display unit for %s, err: %w", cc.name, err))
 			}
@@ -1024,26 +1026,17 @@ func evaluateUnclaimedRewardsAlert(cc *ChainConfig) (bool, bool) {
 			return alert, resolved
 		}
 
-		if err := github_com_cosmos_cosmos_sdk_types.ValidateDenom(targetDenom); err != nil {
-			fallback := ""
-			if len(nativeCoins) > 0 {
-				if errFallback := github_com_cosmos_cosmos_sdk_types.ValidateDenom(nativeCoins[0].Denom); errFallback == nil {
-					fallback = nativeCoins[0].Denom
-				}
-			}
-			if fallback == "" {
-				l(slog.LevelError, fmt.Errorf("invalid target denom %q for %s: %w", targetDenom, cc.name, err))
-				return alert, resolved
-			}
-			l(slog.LevelDebug, fmt.Errorf("invalid target denom %q for %s: %w; falling back to %q", targetDenom, cc.name, err, fallback))
-			targetDenom = fallback
+		// coinPrice is for the chain display token. If metadata exists but conversion to display
+		// failed, the amount may still be in base units (e.g. uom), which would misprice by 10^exp.
+		// Skip this alert evaluation rather than raising a false amount-based alert.
+		if cc.denomMetadata != nil && !convertedToDisplay {
+			l(slog.LevelDebug, fmt.Errorf("skipping unclaimed rewards pricing for %s because rewards are not confirmed in display units", cc.name))
+			return alert, resolved
 		}
 
-		totalRewards := github_com_cosmos_cosmos_sdk_types.NewDecCoinFromDec(targetDenom, totalAmount)
-
 		coinPrice, err := td.coinMarketCapClient.GetPrice(td.ctx, cc.Slug)
-		if err == nil {
-			totalRewardsConverted := totalRewards.Amount.MustFloat64() * coinPrice.Price
+		if err == nil && convertedToDisplay {
+			totalRewardsConverted := totalAmount.MustFloat64() * coinPrice.Price
 			threshold := floatVal(cc.Alerts.UnclaimedRewardsThreshold)
 
 			alertID := fmt.Sprintf("UnclaimedRewards_%s", cc.ValAddress)
