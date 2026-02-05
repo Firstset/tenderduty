@@ -4,8 +4,9 @@ import (
 	"embed"
 	"encoding/json"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"regexp"
 	"sort"
 	"sync"
@@ -27,7 +28,8 @@ func Serve(port string, updates chan *ChainStatus, logs chan LogMessage, hideLog
 	var err error
 	rootDir, err = fs.Sub(Content, "static")
 	if err != nil {
-		log.Fatalln(err)
+		slog.Error("failed to load embedded static content", "err", err)
+		os.Exit(1)
 	}
 	var cast broadcast.Broadcaster
 
@@ -150,7 +152,8 @@ func Serve(port string, updates chan *ChainStatus, logs chan LogMessage, hideLog
 	}
 	err = server.ListenAndServe()
 	cast.Discard()
-	log.Fatal("tenderduty dashboard server failed", err)
+	slog.Error("tenderduty dashboard server failed", "err", err)
+	os.Exit(1)
 }
 
 // CacheHandler implements the Handler interface with a Cache-Control set on responses

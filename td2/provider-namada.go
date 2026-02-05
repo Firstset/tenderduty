@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -74,7 +75,7 @@ func getVotingPeriodProposals(httpClient *http.Client, indexers []string) ([]gov
 				govProposal, err := namadaProposal.ToGovProposal()
 				if err != nil {
 					// Log error but continue with other proposals
-					l(fmt.Sprintf("Failed to convert proposal %s: %v", namadaProposal.ID, err))
+					l(slog.LevelWarn, fmt.Sprintf("Failed to convert proposal %s: %v", namadaProposal.ID, err))
 					continue
 				}
 				if !slices.Contains(votingPeriodProposalIds, namadaProposal.ID) {

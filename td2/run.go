@@ -3,7 +3,7 @@ package tenderduty
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -25,9 +25,10 @@ func Run(configFile, stateFile, chainConfigDirectory string, password *string, d
 		fmt.Println(p)
 	}
 	if fatal {
-		log.Fatal("tenderduty the configuration is invalid, refusing to start")
+		slog.Error("tenderduty configuration is invalid, refusing to start")
+		os.Exit(1)
 	}
-	log.Println("tenderduty config is valid, starting tenderduty with", len(td.Chains), "chains")
+	slog.Info("tenderduty config is valid, starting tenderduty", "chains", len(td.Chains))
 
 	defer td.cancel()
 
@@ -39,23 +40,23 @@ func Run(configFile, stateFile, chainConfigDirectory string, password *string, d
 					var e error
 					e = notifyPagerduty(msg)
 					if e != nil {
-						l(msg.chain, "error sending alert to pagerduty", e.Error())
+						l(slog.LevelWarn, msg.chain, "error sending alert to pagerduty", e.Error())
 					}
 					e = notifyDiscord(msg)
 					if e != nil {
-						l(msg.chain, "error sending alert to discord", e.Error())
+						l(slog.LevelWarn, msg.chain, "error sending alert to discord", e.Error())
 					}
 					e = notifyTg(msg)
 					if e != nil {
-						l(msg.chain, "error sending alert to telegram", e.Error())
+						l(slog.LevelWarn, msg.chain, "error sending alert to telegram", e.Error())
 					}
 					e = notifySlack(msg)
 					if e != nil {
-						l(msg.chain, "error sending alert to slack", e.Error())
+						l(slog.LevelWarn, msg.chain, "error sending alert to slack", e.Error())
 					}
 					e = notifyWebhook(msg)
 					if e != nil {
-						l(msg.chain, "error sending alert to webhook", e.Error())
+						l(slog.LevelWarn, msg.chain, "error sending alert to webhook", e.Error())
 					}
 				}(alert)
 			case <-td.ctx.Done():
@@ -66,7 +67,7 @@ func Run(configFile, stateFile, chainConfigDirectory string, password *string, d
 
 	if td.EnableDash {
 		go dash.Serve(td.Listen, td.updateChan, td.logChan, td.HideLogs, devMode)
-		l("starting dashboard on", td.Listen)
+		l(slog.LevelInfo, "starting dashboard on ", td.Listen)
 	} else {
 		go func() {
 			for {
@@ -107,22 +108,22 @@ func Run(configFile, stateFile, chainConfigDirectory string, password *string, d
 			for {
 				e := cc.newRpc()
 				if e != nil {
-					l(cc.ChainId, e)
+					l(slog.LevelWarn, cc.ChainId, e)
 					time.Sleep(5 * time.Second)
 					continue
 				}
 
 				e = cc.GetMinSignedPerWindow()
 				if e != nil {
-					l("🛑", cc.ChainId, e)
+					l(slog.LevelError, "🛑", cc.ChainId, e)
 				}
 
 				e = cc.GetValInfo(true)
 				if e != nil {
-					l("🛑", cc.ChainId, e)
+					l(slog.LevelError, "🛑", cc.ChainId, e)
 				}
 				cc.WsRun()
-				l(cc.ChainId, "🌀 websocket exited! Restarting monitoring")
+				l(slog.LevelWarn, cc.ChainId, "🌀 websocket exited! Restarting monitoring")
 				time.Sleep(5 * time.Second)
 			}
 		}(cc, k)
@@ -144,11 +145,11 @@ func saveOnExit(stateFile string, saved chan any) {
 
 	saveState := func() {
 		defer close(saved)
-		log.Println("saving state...")
+		slog.Info("saving state")
 		//#nosec -- variable specified on command line
-		f, e := os.OpenFile(stateFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+		f, e := os.OpenFile(stateFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 		if e != nil {
-			log.Println(e)
+			slog.Error("failed to open state file for writing", "err", e)
 			return
 		}
 		td.chainsMux.Lock()
@@ -177,12 +178,12 @@ func saveOnExit(stateFile string, saved chan any) {
 			NodesDown: nodesDown,
 		})
 		if e != nil {
-			log.Println(e)
+			slog.Error("failed to marshal state", "err", e)
 			return
 		}
 		_, _ = f.Write(b)
 		_ = f.Close()
-		log.Println("tenderduty exiting.")
+		slog.Info("tenderduty exiting")
 	}
 	for {
 		select {

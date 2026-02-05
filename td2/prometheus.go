@@ -3,8 +3,9 @@ package tenderduty
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -176,7 +177,7 @@ func prometheusExporter(ctx context.Context, updates chan *promUpdate) {
 
 	promMux := http.NewServeMux()
 
-	l(fmt.Sprintf("📊 Serving prometheus metrics at 0.0.0.0:%d/metrics", td.PrometheusListenPort))
+	l(slog.LevelInfo, fmt.Sprintf("📊 Serving prometheus metrics at 0.0.0.0:%d/metrics", td.PrometheusListenPort))
 	promMux.Handle("/metrics", promhttp.Handler())
 	promSrv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", td.PrometheusListenPort),
@@ -186,5 +187,8 @@ func prometheusExporter(ctx context.Context, updates chan *promUpdate) {
 		IdleTimeout:       120 * time.Second,
 		ReadHeaderTimeout: 20 * time.Second,
 	}
-	log.Fatal(promSrv.ListenAndServe())
+	if err := promSrv.ListenAndServe(); err != nil {
+		slog.Error("prometheus server failed", "err", err)
+		os.Exit(1)
+	}
 }

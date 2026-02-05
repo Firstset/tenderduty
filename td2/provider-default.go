@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -149,13 +150,13 @@ func (d *DefaultProvider) QueryUnvotedOpenProposals(ctx context.Context) ([]gov.
 					// For each proposal, check if the validator has voted
 					accAddress, err := ConvertValopertToAccAddress(d.ChainConfig.ValAddress)
 					if err != nil {
-						l(fmt.Sprintf("⚠️ Cannot convert valoper to account address: %v", err))
+						l(slog.LevelWarn, fmt.Sprintf("⚠️ Cannot convert valoper to account address: %v", err))
 						continue
 					}
 
 					hasVoted, err := d.CheckIfValidatorVoted(ctx, proposal.ProposalId, accAddress)
 					if err != nil {
-						l(fmt.Sprintf("⚠️ Error checking if validator voted: %v", err))
+						l(slog.LevelWarn, fmt.Sprintf("⚠️ Error checking if validator voted: %v", err))
 					}
 
 					if !hasVoted {

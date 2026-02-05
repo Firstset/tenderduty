@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -172,20 +172,20 @@ type ProviderConfig struct {
 // ChainConfig represents a validator to be monitored on a chain, it is somewhat of a misnomer since multiple
 // validators can be monitored on a single chain.
 type ChainConfig struct {
-	name              string
-	wsclient          *TmConn            // custom websocket client to work around wss:// bugs in tendermint
-	client            *rpchttp.HTTP      // legit tendermint client
-	noNodes           bool               // tracks if all nodes are down
-	valInfo           *ValInfo           // recent validator state, only refreshed every few minutes
-	lastValInfo       *ValInfo           // use for detecting newly-jailed/tombstone
-	totalBondedTokens float64            // total bonded tokens on the chain
-	totalSupply       float64            // total supply of the chain, used for calculating APR
-	communityTax      float64            // community tax rate, used for calculating APR
-	inflationRate     float64            // inflation rate of the chain, used for calculating APR
-	baseAPR           float64            // the base APR of a chain
-	denomMetadata     *bank.Metadata     // chain denom metadata
-	cryptoPrice            *utils.CryptoPrice        // coin price in a fiat currency
-	cosmosDirectoryData    *CosmosDirectoryChainData // cached chain data from cosmos.directory
+	name                string
+	wsclient            *TmConn                   // custom websocket client to work around wss:// bugs in tendermint
+	client              *rpchttp.HTTP             // legit tendermint client
+	noNodes             bool                      // tracks if all nodes are down
+	valInfo             *ValInfo                  // recent validator state, only refreshed every few minutes
+	lastValInfo         *ValInfo                  // use for detecting newly-jailed/tombstone
+	totalBondedTokens   float64                   // total bonded tokens on the chain
+	totalSupply         float64                   // total supply of the chain, used for calculating APR
+	communityTax        float64                   // community tax rate, used for calculating APR
+	inflationRate       float64                   // inflation rate of the chain, used for calculating APR
+	baseAPR             float64                   // the base APR of a chain
+	denomMetadata       *bank.Metadata            // chain denom metadata
+	cryptoPrice         *utils.CryptoPrice        // coin price in a fiat currency
+	cosmosDirectoryData *CosmosDirectoryChainData // cached chain data from cosmos.directory
 
 	minSignedPerWindow      float64 // instantly see the validator risk level
 	blocksResults           []int
@@ -472,14 +472,14 @@ func validateConfig(c *Config) (fatal bool, problems []string) {
 		go func() {
 			e := refreshRegistry()
 			if e != nil {
-				l("could not fetch chain registry paths, using defaults")
+				l(slog.LevelWarn, "could not fetch chain registry paths, using defaults")
 			}
 			for {
 				time.Sleep(12 * time.Hour)
-				l("refreshing cosmos.registry paths")
+				l(slog.LevelInfo, "refreshing cosmos.registry paths")
 				e = refreshRegistry()
 				if e != nil {
-					l("could not refresh registry paths -", e)
+					l(slog.LevelWarn, "could not refresh registry paths -", e)
 				}
 			}
 		}()
@@ -529,7 +529,7 @@ func loadConfig(yamlFile, stateFile, chainConfigDirectory string, password *stri
 			return nil, err
 		}
 		_ = resp.Body.Close()
-		log.Printf("downloaded %d bytes from %s", len(b), yamlFile)
+		slog.Info("downloaded remote config", "bytes", len(b), "url", yamlFile)
 		decrypted, err := decrypt(b, *password)
 		if err != nil {
 			return nil, err
@@ -567,22 +567,22 @@ func loadConfig(yamlFile, stateFile, chainConfigDirectory string, password *stri
 	// Load additional chain configuration files
 	chainConfigFiles, e := os.ReadDir(chainConfigDirectory)
 	if e != nil {
-		l("Failed to scan chainConfigDirectory", e)
+		l(slog.LevelWarn, "failed to scan chainConfigDirectory", e)
 	}
 
 	for _, chainConfigFile := range chainConfigFiles {
 		if chainConfigFile.IsDir() {
-			l("Skipping Directory: ", chainConfigFile.Name())
+			l(slog.LevelInfo, "skipping directory:", chainConfigFile.Name())
 			continue
 		}
 		if !strings.HasSuffix(chainConfigFile.Name(), ".yml") {
-			l("Skipping non .yml file: ", chainConfigFile.Name())
+			l(slog.LevelInfo, "skipping non .yml file:", chainConfigFile.Name())
 			continue
 		}
 		fmt.Println("Reading Chain Config File: ", chainConfigFile.Name())
 		chainConfig, e := loadChainConfig(path.Join(chainConfigDirectory, chainConfigFile.Name()))
 		if e != nil {
-			l(fmt.Sprintf("Failed to read %s", chainConfigFile), e)
+			l(slog.LevelError, fmt.Sprintf("failed to read %s", chainConfigFile), e)
 			return nil, e
 		}
 
@@ -593,7 +593,7 @@ func loadConfig(yamlFile, stateFile, chainConfigDirectory string, password *stri
 			c.Chains = make(map[string]*ChainConfig)
 		}
 		c.Chains[chainName] = chainConfig
-		l(fmt.Sprintf("Added %s from ", chainName), chainConfigFile.Name())
+		l(slog.LevelInfo, fmt.Sprintf("added %s from", chainName), chainConfigFile.Name())
 	}
 
 	if len(c.Chains) == 0 {
@@ -621,17 +621,17 @@ func loadConfig(yamlFile, stateFile, chainConfigDirectory string, password *stri
 	//#nosec -- variable specified on command line
 	sf, e := os.OpenFile(stateFile, os.O_RDONLY, 0600)
 	if e != nil {
-		l("could not load saved state", e.Error())
+		l(slog.LevelWarn, "could not load saved state", e.Error())
 	}
 	b, e := io.ReadAll(sf)
 	_ = sf.Close()
 	if e != nil {
-		l("could not read saved state", e.Error())
+		l(slog.LevelWarn, "could not read saved state", e.Error())
 	}
 	saved := &savedState{}
 	e = json.Unmarshal(b, saved)
 	if e != nil {
-		l("could not unmarshal saved state", e.Error())
+		l(slog.LevelWarn, "could not unmarshal saved state", e.Error())
 	}
 	for k, v := range saved.Blocks {
 		if c.Chains[k] != nil {
@@ -724,10 +724,10 @@ func loadConfig(yamlFile, stateFile, chainConfigDirectory string, password *stri
 		c.coinMarketCapClient = utils.NewCoinMarketCapClient(c.CoinMarketCapAPIToken, currency, c.tenderdutyCache, cacheExpiration, slugs)
 		_, err := c.coinMarketCapClient.GetPrices(c.ctx)
 		if err == nil {
-			l("💸 price conversion enabled")
+			l(slog.LevelInfo, "💸 price conversion enabled")
 		} else {
 			c.PriceConversion.Enabled = false
-			l("🛑 failed to enable price conversion, found error:", err)
+			l(slog.LevelWarn, "🛑 failed to enable price conversion, found error:", err)
 		}
 	}
 
@@ -737,14 +737,14 @@ func loadConfig(yamlFile, stateFile, chainConfigDirectory string, password *stri
 func clearStale(alarms map[string]alertMsgCache, what string, hasPagerduty bool, hours float64) {
 	for k := range alarms {
 		if time.Since(alarms[k].SentTime).Hours() >= hours {
-			l(fmt.Sprintf("🗑 not restoring old alarm (%v >%.2f hours) from cache - %s", alarms[k], hours, k))
+			l(slog.LevelInfo, fmt.Sprintf("🗑 not restoring old alarm (%v >%.2f hours) from cache - %s", alarms[k], hours, k))
 			if hasPagerduty && what == "pagerduty" {
-				l("NOTE: stale alarms may need to be manually cleared from PagerDuty!")
+				l(slog.LevelWarn, "NOTE: stale alarms may need to be manually cleared from PagerDuty!")
 			}
 			delete(alarms, k)
 			continue
 		}
-		l("📂 restored %s alarm state -", what, k)
+		l(slog.LevelInfo, "📂 restored %s alarm state -", what, k)
 	}
 }
 
