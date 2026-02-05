@@ -4,7 +4,7 @@ import (
 	_ "embed"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"syscall"
 
@@ -48,7 +48,8 @@ func main() {
 			fmt.Print("Please enter the encryption password: ")
 			pass, err := term.ReadPassword(int(syscall.Stdin))
 			if err != nil {
-				log.Fatal(err)
+				slog.Error("failed to read password", "err", err)
+				os.Exit(1)
 			}
 			fmt.Println("")
 			password = string(pass)
@@ -62,13 +63,14 @@ func main() {
 			e = td2.EncryptedConfig(configFile, encryptedFile, password, true)
 		}
 		if e != nil {
-			log.Fatalln(e)
+			slog.Error("failed to process encrypted config", "err", e)
+			os.Exit(1)
 		}
 		os.Exit(0)
 	}
 
 	err := td2.Run(configFile, stateFile, chainConfigDirectory, &password, devMode)
 	if err != nil {
-		log.Println(err.Error(), "... exiting.")
+		slog.Error("tenderduty exiting", "err", err)
 	}
 }

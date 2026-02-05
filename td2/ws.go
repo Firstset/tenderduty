@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
@@ -82,7 +82,7 @@ func (cc *ChainConfig) WsRun() {
 		// wait until our RPC client is connected and running. We will use the same URL for the websocket
 		if cc.client == nil || cc.valInfo == nil || cc.valInfo.Conspub == nil {
 			if started.Before(time.Now().Add(-2 * time.Minute)) {
-				l(cc.name, "websocket client timed out waiting for a working rpc endpoint, restarting")
+				l(slog.LevelWarn, cc.name, "websocket client timed out waiting for a working rpc endpoint, restarting")
 				return
 			}
 			l("⏰ waiting for a healthy client for", cc.ChainId)
@@ -95,14 +95,14 @@ func (cc *ChainConfig) WsRun() {
 	//#nosec G402 -- configurable option
 	cc.wsclient, err = NewClient(cc.client.Remote(), td.TLSSkipVerify)
 	if err != nil {
-		l(err)
+		l(slog.LevelError, err)
 		cancel()
 		return
 	}
 	defer cc.wsclient.Close()
 	err = cc.wsclient.SetCompressionLevel(3)
 	if err != nil {
-		log.Println(err)
+		slog.Error("failed to set websocket compression level", "err", err)
 	}
 
 	// This go func processes the results returned by the listeners. It has most of the logic on where data is sent,
@@ -133,7 +133,7 @@ func (cc *ChainConfig) WsRun() {
 						warn := fmt.Sprintf("❌ warning      %s missed %s %d on %s", cc.valInfo.Moniker, missTypes[signState], update.Height, cc.ChainId)
 						info += warn + "\n"
 						cc.lastError = time.Now().UTC().String() + " " + info
-						l(warn)
+						l(slog.LevelWarn, warn)
 					}
 
 					switch signState {
@@ -249,7 +249,7 @@ func (cc *ChainConfig) WsRun() {
 	go func() {
 		e := handleBlocks(ctx, blockChan, resultChan, strings.ToUpper(hex.EncodeToString(cc.valInfo.Conspub)))
 		if e != nil {
-			l("🛑", cc.ChainId, e)
+			l(slog.LevelError, "🛑", cc.ChainId, e)
 			cancel()
 		}
 	}()
@@ -261,7 +261,7 @@ func (cc *ChainConfig) WsRun() {
 		for {
 			_, msg, e = cc.wsclient.ReadMessage()
 			if e != nil {
-				l(e)
+				l(slog.LevelError, e)
 				cancel()
 				return
 			}
@@ -285,7 +285,7 @@ func (cc *ChainConfig) WsRun() {
 		q := fmt.Sprintf(`{"jsonrpc":"2.0","method":"subscribe","id":1,"params":{"query":"%s"}}`, subscribe)
 		err = cc.wsclient.WriteMessage(websocket.TextMessage, []byte(q))
 		if err != nil {
-			l(err)
+			l(slog.LevelError, err)
 			cancel()
 			break
 		}
@@ -360,7 +360,7 @@ func handleBlocks(ctx context.Context, blocks chan *WsReply, results chan Status
 			b := &rawBlock{}
 			err := json.Unmarshal(block.Value(), b)
 			if err != nil {
-				l("could not decode block", err)
+				l(slog.LevelError, "could not decode block", err)
 				continue
 			}
 			upd := StatusUpdate{
@@ -402,7 +402,7 @@ func handleVotes(ctx context.Context, votes chan *WsReply, results chan StatusUp
 			vote := &rawVote{}
 			err := json.Unmarshal(reply.Value(), vote)
 			if err != nil {
-				l(err)
+				l(slog.LevelError, err)
 				continue
 			}
 			if vote.Vote.ValidatorAddress == address {

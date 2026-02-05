@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/go-passwd/validator"
@@ -227,6 +227,6 @@ func EncryptedConfig(plaintext, ciphertext, pass string, decrypting bool) error 
 	if decrypting {
 		fileType = "decrypted"
 	}
-	log.Printf("wrote %d bytes to %s file %s\n", size, fileType, outfile)
+	slog.Info("wrote file", "bytes", size, "type", fileType, "file", outfile)
 	return nil
 }

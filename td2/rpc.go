@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -23,9 +24,9 @@ func (cc *ChainConfig) newRpc() error {
 	// This is done early so we can use it for RPC fallback and chain params
 	if cc.cosmosDirectoryData == nil {
 		if err := cc.loadCosmosDirectoryData(); err != nil {
-			l("ℹ️ cosmos.directory data not available for", cc.name, "(chain_name: "+cc.getEffectiveChainName()+", chain_id: "+cc.ChainId+")", "-", err)
+			l(slog.LevelWarn, "ℹ️ cosmos.directory data not available for", cc.name, "(chain_name: "+cc.getEffectiveChainName()+", chain_id: "+cc.ChainId+")", "-", err)
 		} else {
-			l("✅ loaded cosmos.directory data for", cc.name, "(chain_name: "+cc.getEffectiveChainName()+", chain_id: "+cc.ChainId+")")
+			l(slog.LevelInfo, "✅ loaded cosmos.directory data for", cc.name, "(chain_name: "+cc.getEffectiveChainName()+", chain_id: "+cc.ChainId+")")
 		}
 	}
 
@@ -41,14 +42,14 @@ func (cc *ChainConfig) newRpc() error {
 		_, err := url.Parse(u)
 		if err != nil {
 			msg = fmt.Sprintf("❌ could not parse url %s: (%s) %s", cc.name, u, err)
-			l(msg)
+			l(slog.LevelInfo, msg)
 			down = true
 			return
 		}
 		cc.client, err = rpchttp.New(u, "/websocket")
 		if err != nil {
 			msg = fmt.Sprintf("❌ could not connect client for %s: (%s) %s", cc.name, u, err)
-			l(msg)
+			l(slog.LevelInfo, msg)
 			down = true
 			return
 		}
@@ -60,7 +61,7 @@ func (cc *ChainConfig) newRpc() error {
 			if err != nil {
 				msg = fmt.Sprintf("❌ could not get status for %s: (%s) %s", cc.name, u, err)
 				down = true
-				l(msg)
+				l(slog.LevelInfo, msg)
 				return
 			}
 			network, catching_up = n, c
@@ -70,14 +71,14 @@ func (cc *ChainConfig) newRpc() error {
 		if network != cc.ChainId {
 			msg = fmt.Sprintf("chain id %s on %s does not match, expected %s, skipping", network, u, cc.ChainId)
 			down = true
-			l(msg)
+			l(slog.LevelInfo, msg)
 			return
 		}
 		if catching_up {
 			msg = fmt.Sprint("🐢 node is not synced, skipping ", u)
 			syncing = true
 			down = true
-			l(msg)
+			l(slog.LevelInfo, msg)
 			return
 		}
 		cc.noNodes = false
@@ -107,25 +108,25 @@ func (cc *ChainConfig) newRpc() error {
 		chainName := cc.getEffectiveChainName()
 		u := getRegistryUrlByChainName(chainName)
 		node := guessPublicEndpoint(u)
-		l(cc.ChainId, "⛑ attempting to use cosmos.directory fallback node (chain_name:", chainName+")", node)
+		l(slog.LevelInfo, cc.ChainId, "⛑ attempting to use cosmos.directory fallback node (chain_name:", chainName+")", node)
 		if _, failed, _ := tryUrl(node); !failed {
-			l(cc.ChainId, "⛑ connected to cosmos.directory endpoint", node)
+			l(slog.LevelInfo, cc.ChainId, "⛑ connected to cosmos.directory endpoint", node)
 			return nil
 		}
-		l("⚠️ could not connect to cosmos.directory fallback for chain_name:", chainName)
+		l(slog.LevelWarn, "⚠️ could not connect to cosmos.directory fallback for chain_name:", chainName)
 	}
 
 	// Legacy fallback using chain_id lookup (when PublicFallback is explicitly enabled)
 	if cc.PublicFallback {
 		if u, ok := getRegistryUrl(cc.ChainId); ok {
 			node := guessPublicEndpoint(u)
-			l(cc.ChainId, "⛑ attempting to use public fallback node (chain_id lookup)", node)
+			l(slog.LevelInfo, cc.ChainId, "⛑ attempting to use public fallback node (chain_id lookup)", node)
 			if _, failed, _ := tryUrl(node); !failed {
-				l(cc.ChainId, "⛑ connected to public endpoint", node)
+				l(slog.LevelInfo, cc.ChainId, "⛑ connected to public endpoint", node)
 				return nil
 			}
 		} else {
-			l("could not find a public endpoint for", cc.ChainId)
+			l(slog.LevelWarn, "could not find a public endpoint for", cc.ChainId)
 		}
 	}
 	cc.noNodes = true
@@ -198,7 +199,7 @@ func (cc *ChainConfig) monitorHealth(ctx context.Context, chainName string) {
 						if td.Prom {
 							td.statsChan <- cc.mkUpdate(metricNodeDownSeconds, time.Since(node.downSince).Seconds(), node.Url)
 						}
-						l("⚠️ " + node.lastMsg)
+						l(slog.LevelWarn, "⚠️ "+node.lastMsg)
 					}
 					c, e := rpchttp.New(node.Url, "/websocket")
 					if e != nil {
@@ -231,14 +232,14 @@ func (cc *ChainConfig) monitorHealth(ctx context.Context, chainName string) {
 					node.syncing = false
 					node.downSince = time.Unix(0, 0)
 					cc.noNodes = false
-					l(fmt.Sprintf("🟢 %-12s node %s is healthy", chainName, node.Url))
+					l(slog.LevelInfo, fmt.Sprintf("🟢 %-12s node %s is healthy", chainName, node.Url))
 				}(node)
 			}
 
 			if cc.client == nil {
 				e := cc.newRpc()
 				if e != nil {
-					l("💥", cc.ChainId, e)
+					l(slog.LevelError, "💥", cc.ChainId, e)
 				}
 			}
 			if cc.valInfo != nil {
@@ -260,7 +261,7 @@ func (cc *ChainConfig) monitorHealth(ctx context.Context, chainName string) {
 			}
 			err = cc.GetValInfo(false)
 			if err != nil {
-				l("❓ refreshing signing info for", cc.ValAddress, err)
+				l(slog.LevelWarn, "❓ refreshing signing info for", cc.ValAddress, err)
 			}
 		}
 	}
@@ -277,9 +278,9 @@ func (c *Config) pingHealthcheck() {
 		for range ticker.C {
 			_, err := http.Get(c.Healthcheck.PingURL)
 			if err != nil {
-				l(fmt.Sprintf("❌ Failed to ping healthcheck URL: %s", err.Error()))
+				l(slog.LevelWarn, fmt.Sprintf("❌ Failed to ping healthcheck URL: %s", err.Error()))
 			} else {
-				l(fmt.Sprintf("🏓 Successfully pinged healthcheck URL: %s", c.Healthcheck.PingURL))
+				l(slog.LevelInfo, fmt.Sprintf("🏓 Successfully pinged healthcheck URL: %s", c.Healthcheck.PingURL))
 			}
 		}
 	}()

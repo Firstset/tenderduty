@@ -1,18 +1,19 @@
 module github.com/firstset/tenderduty/v2
 
-go 1.18
+go 1.21
 
 require (
 	github.com/PagerDuty/go-pagerduty v1.5.1
+	github.com/cosmos/btcutil v1.0.4
 	github.com/cosmos/cosmos-sdk v0.45.11
 	github.com/go-passwd/validator v0.0.0-20180902184246-0b4c967e436b
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/go-yaml/yaml v2.1.0+incompatible
 	github.com/gorilla/websocket v1.5.0
+	github.com/near/borsh-go v0.3.1
 	github.com/prometheus/client_golang v1.12.2
 	github.com/tendermint/tendermint v0.34.24
 	github.com/textileio/go-threads v1.1.5
-	github.com/near/borsh-go v0.3.1
 	golang.org/x/crypto v0.1.0
 	golang.org/x/term v0.1.0
 )
@@ -29,7 +30,6 @@ require (
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/confio/ics23/go v0.7.0 // indirect
-	github.com/cosmos/btcutil v1.0.4 // indirect
 	github.com/cosmos/go-bip39 v1.0.0 // indirect
 	github.com/cosmos/iavl v0.19.4 // indirect
 	github.com/cosmos/ledger-cosmos-go v0.11.1 // indirect

@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"slices"
@@ -184,7 +184,7 @@ func shouldNotify(msg *alertMsg, dest notifyDest) bool {
 		if strings.HasPrefix(msg.uniqueId, "UnvotedGovernanceProposal") {
 			// Check if it has been 6 hours since the last (re-)send
 			if whichMap[msg.uniqueId].SentTime.Before(time.Now().Add(-1 * time.Duration(td.GovernanceAlertsReminderInterval) * time.Hour)) {
-				l(fmt.Sprintf("🔄 RE-SENDING ALERT on %s (%s) - notifying %s", msg.chain, msg.message, service))
+				l(slog.LevelInfo, fmt.Sprintf("🔄 RE-SENDING ALERT on %s (%s) - notifying %s", msg.chain, msg.message, service))
 				cache := alertMsgCache{
 					Message:  msg.message,
 					SentTime: time.Now(),
@@ -197,11 +197,11 @@ func shouldNotify(msg *alertMsg, dest notifyDest) bool {
 	case !whichMap[msg.uniqueId].SentTime.IsZero() && msg.resolved:
 		// alarm is cleared
 		delete(whichMap, msg.uniqueId)
-		l(fmt.Sprintf("💜 Resolved     alarm on %s (%s) - notifying %s", msg.chain, msg.message, service))
+		l(slog.LevelInfo, fmt.Sprintf("💜 Resolved     alarm on %s (%s) - notifying %s", msg.chain, msg.message, service))
 		return true
 	case msg.resolved:
 		// it looks like we got a duplicate resolution or suppressed it. Note it and move on:
-		l(fmt.Sprintf("😕 Not clearing alarm on %s (%s) - no corresponding alert %s", msg.chain, msg.message, service))
+		l(slog.LevelWarn, fmt.Sprintf("😕 Not clearing alarm on %s (%s) - no corresponding alert %s", msg.chain, msg.message, service))
 		return false
 	}
 
@@ -212,7 +212,7 @@ func shouldNotify(msg *alertMsg, dest notifyDest) bool {
 
 	// for pagerduty we perform some basic flap detection
 	if dest == pd && msg.pd && alarms.flappingAlarms[msg.chain][msg.uniqueId].SentTime.After(time.Now().Add(-5*time.Minute)) {
-		l("🛑 flapping detected - suppressing pagerduty notification:", msg.chain, msg.message)
+		l(slog.LevelWarn, "🛑 flapping detected - suppressing pagerduty notification:", msg.chain, msg.message)
 		return false
 	} else if dest == pd && msg.pd {
 		cache := alertMsgCache{
@@ -222,7 +222,7 @@ func shouldNotify(msg *alertMsg, dest notifyDest) bool {
 		alarms.flappingAlarms[msg.chain][msg.uniqueId] = cache
 	}
 
-	l(fmt.Sprintf("🚨 ALERT        new alarm on %s (%s) - notifying %s", msg.chain, msg.message, service))
+	l(slog.LevelInfo, fmt.Sprintf("🚨 ALERT        new alarm on %s (%s) - notifying %s", msg.chain, msg.message, service))
 	cache := alertMsgCache{
 		Message:  msg.message,
 		SentTime: time.Now(),
@@ -301,27 +301,27 @@ func notifyDiscord(msg *alertMsg) (err error) {
 	client := &http.Client{}
 	data, err := json.MarshalIndent(discPost, "", "  ")
 	if err != nil {
-		l("⚠️ Could not notify discord!", err)
+		l(slog.LevelWarn, "⚠️ Could not notify discord!", err)
 		return err
 	}
 
 	req, err := http.NewRequest("POST", msg.discHook, bytes.NewBuffer(data))
 	if err != nil {
-		l("⚠️ Could not notify discord!", err)
+		l(slog.LevelWarn, "⚠️ Could not notify discord!", err)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		l("⚠️ Could not notify discord!", err)
+		l(slog.LevelWarn, "⚠️ Could not notify discord!", err)
 		return err
 	}
 	_ = resp.Body.Close()
 
 	if resp.StatusCode != 204 {
-		log.Println(resp)
-		l("⚠️ Could not notify discord! Returned", resp.StatusCode)
+		slog.Warn("discord webhook returned non-success response", "status", resp.StatusCode)
+		l(slog.LevelWarn, "⚠️ Could not notify discord! Returned", resp.StatusCode)
 		return err
 	}
 	return nil
@@ -364,7 +364,7 @@ func notifyTg(msg *alertMsg) (err error) {
 	}
 	bot, err := tgbotapi.NewBotAPI(msg.tgKey)
 	if err != nil {
-		l("notify telegram:", err)
+		l(slog.LevelWarn, "notify telegram:", err)
 		return
 	}
 
@@ -376,7 +376,7 @@ func notifyTg(msg *alertMsg) (err error) {
 	mc := tgbotapi.NewMessageToChannel(msg.tgChannel, fmt.Sprintf("%s: %s: %s", msg.chain, prefix, msg.message))
 	_, err = bot.Send(mc)
 	if err != nil {
-		l("telegram send:", err)
+		l(slog.LevelWarn, "telegram send:", err)
 	}
 	return err
 }
@@ -390,7 +390,7 @@ func notifyPagerduty(msg *alertMsg) (err error) {
 	}
 	// key from the example, don't spam their api
 	if msg.key == "aaaaaaaaaaaabbbbbbbbbbbbbcccccccccccc" {
-		l("invalid pagerduty key")
+		l(slog.LevelWarn, "invalid pagerduty key")
 		return
 	}
 	action := "trigger"
@@ -485,13 +485,13 @@ func notifyWebhook(msg *alertMsg) (err error) {
 
 	data, err := json.Marshal(payload)
 	if err != nil {
-		l("⚠️ Could not marshal webhook payload!", err)
+		l(slog.LevelWarn, "⚠️ Could not marshal webhook payload!", err)
 		return err
 	}
 
 	req, err := http.NewRequest("POST", msg.whURL, bytes.NewBuffer(data))
 	if err != nil {
-		l("⚠️ Could not create webhook request!", err)
+		l(slog.LevelWarn, "⚠️ Could not create webhook request!", err)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -499,13 +499,13 @@ func notifyWebhook(msg *alertMsg) (err error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		l("⚠️ Could not send webhook!", err)
+		l(slog.LevelWarn, "⚠️ Could not send webhook!", err)
 		return err
 	}
 	_ = resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		l("⚠️ Webhook returned non-success status:", resp.StatusCode)
+		l(slog.LevelWarn, "⚠️ Webhook returned non-success status:", resp.StatusCode)
 		return fmt.Errorf("webhook returned status %d for %s", resp.StatusCode, msg.chain)
 	}
 
@@ -660,7 +660,7 @@ func evaluateNoRPCEndpointsAlert(cc *ChainConfig, noNodesSec *int) (bool, bool) 
 		*noNodesSec += 2
 		if *noNodesSec <= 60*td.NodeDownMin {
 			if *noNodesSec%20 == 0 {
-				l(fmt.Sprintf("no nodes available on %s for %d seconds, deferring alarm", cc.ChainId, *noNodesSec))
+				l(slog.LevelInfo, fmt.Sprintf("no nodes available on %s for %d seconds, deferring alarm", cc.ChainId, *noNodesSec))
 			}
 		} else {
 			if !alarms.exist(cc.name, alertID) {
@@ -1011,7 +1011,7 @@ func evaluateUnclaimedRewardsAlert(cc *ChainConfig) (bool, bool) {
 			if err == nil {
 				nativeCoins = *convertedCoins
 			} else {
-				l(fmt.Errorf("cannot convert rewards/commission to display unit for %s, err: %w", cc.name, err))
+				l(slog.LevelError, fmt.Errorf("cannot convert rewards/commission to display unit for %s, err: %w", cc.name, err))
 			}
 		}
 
@@ -1032,10 +1032,10 @@ func evaluateUnclaimedRewardsAlert(cc *ChainConfig) (bool, bool) {
 				}
 			}
 			if fallback == "" {
-				l(fmt.Errorf("invalid target denom %q for %s: %w", targetDenom, cc.name, err))
+				l(slog.LevelError, fmt.Errorf("invalid target denom %q for %s: %w", targetDenom, cc.name, err))
 				return alert, resolved
 			}
-			l(fmt.Errorf("invalid target denom %q for %s: %w; falling back to %q", targetDenom, cc.name, err, fallback))
+			l(slog.LevelError, fmt.Errorf("invalid target denom %q for %s: %w; falling back to %q", targetDenom, cc.name, err, fallback))
 			targetDenom = fallback
 		}
 

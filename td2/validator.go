@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -189,7 +190,7 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 		cc.valInfo.VotingPowerPercent = cc.valInfo.DelegatedTokens / cc.totalBondedTokens
 		// TODO:update statsChan
 	} else {
-		l(err)
+		l(slog.LevelError, err)
 	}
 
 	// Query the chain's outstanding rewards
@@ -202,7 +203,7 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 			if err == nil {
 				bondDenom = stakingParams.BondDenom
 			} else {
-				l(fmt.Errorf("cannot query staking params for chain %s via ABCI, err: %w", cc.name, err))
+				l(slog.LevelError, fmt.Errorf("cannot query staking params for chain %s via ABCI, err: %w", cc.name, err))
 			}
 			if bondDenom == "" && cc.hasCosmosDirectoryData() {
 				if cc.cosmosDirectoryData.Params.Staking.BondDenom != "" {
@@ -220,7 +221,7 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 				if err == nil {
 					cc.denomMetadata = bankMeta
 				} else {
-					l(fmt.Errorf("cannot query bank metadata for chain %s via ABCI, err: %w, trying cosmos.directory fallback", cc.name, err))
+					l(slog.LevelError, fmt.Errorf("cannot query bank metadata for chain %s via ABCI, err: %w, trying cosmos.directory fallback", cc.name, err))
 					// Try cosmos.directory fallback (assets first, then chain data)
 					bankMeta = cc.getBankMetadataFromCosmosDirectory(bondDenom)
 					if bankMeta != nil {
@@ -232,7 +233,7 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 						if err == nil {
 							cc.denomMetadata = bankMeta
 						} else {
-							l(fmt.Errorf("cannot find bank metadata for chain %s in the GitHub JSON file, err: %w", cc.name, err))
+							l(slog.LevelError, fmt.Errorf("cannot find bank metadata for chain %s in the GitHub JSON file, err: %w", cc.name, err))
 						}
 					}
 				}
@@ -247,7 +248,7 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 			if err == nil {
 				rewards = rewardsConverted
 			} else {
-				l(fmt.Errorf("cannot convert rewards to its display unit for chain %s, err: %w, the value will remain in the base unit", cc.name, err))
+				l(slog.LevelError, fmt.Errorf("cannot convert rewards to its display unit for chain %s, err: %w, the value will remain in the base unit", cc.name, err))
 			}
 		}
 
@@ -256,7 +257,7 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 			if err == nil {
 				commission = commissionConverted
 			} else {
-				l(fmt.Errorf("cannot convert commission to its display unit for chain %s, err: %w, the value will remain in the base unit", cc.name, err))
+				l(slog.LevelError, fmt.Errorf("cannot convert commission to its display unit for chain %s, err: %w, the value will remain in the base unit", cc.name, err))
 			}
 		}
 
@@ -265,7 +266,7 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 
 		// TODO:update statsChan
 	} else {
-		l(fmt.Errorf("failed to query rewards and commission information for chain %s, err: %w", cc.name, err))
+		l(slog.LevelError, fmt.Errorf("failed to query rewards and commission information for chain %s, err: %w", cc.name, err))
 	}
 
 	if cc.denomMetadata != nil {
@@ -283,7 +284,7 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 			cc.baseAPR = inflationRate * (1 - communityTax) * totalSupply / cc.totalBondedTokens
 			cc.valInfo.ValidatorAPR = cc.baseAPR * (1 - cc.valInfo.CommissionRate)
 		} else {
-			l(fmt.Errorf("failed to query APR-related data for chain %s via ABCI (err: %w)", cc.name, err))
+			l(slog.LevelError, fmt.Errorf("failed to query APR-related data for chain %s via ABCI (err: %w)", cc.name, err))
 		}
 
 		if err != nil || cc.baseAPR == 0 {
@@ -336,7 +337,7 @@ func (cc *ChainConfig) GetValInfo(first bool) (err error) {
 			td.statsChan <- cc.mkUpdate(metricUnvotedProposals, float64(len(cc.unvotedOpenGovProposals)), "")
 		}
 	} else {
-		l(err)
+		l(slog.LevelError, err)
 	}
 
 	// Log if governance alerts are disabled (only on first run)
